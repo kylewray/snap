@@ -2,9 +2,13 @@
 <launch>
 <!-- <param name="/use_sim_time" value="true" /> -->
 
+<!--
   <arg name="map_name" default="$(find breakfast)/maps/simple.yaml" />
 
   <node pkg="map_server" type="map_server" name="map_server" output="screen" args="$(arg map_name)" />
+-->
+
+  <node pkg="joy" type="joy_node" name="joy_node" output="screen" />
 
   <include file="$(find breakfast)/launch/robot.launch" />
 

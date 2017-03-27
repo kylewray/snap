@@ -39,8 +39,8 @@ class Visualize(object):
         self.rawPath = list()
         self.lastPathPublishTime = rospy.get_rostime()
 
-        self.publishRate = float(rospy.get_param(rospy.search_param('pub_path_rate')))
-        self.subKobukiOdomTopic = rospy.get_param(rospy.search_param('sub_kobuki_odom'))
+        self.publishRate = float(rospy.get_param(rospy.search_param('pub_path_rate'), "0.2"))
+        self.subKobukiOdometryTopic = rospy.get_param(rospy.search_param('sub_kobuki_odometry'), "odom")
 
         self.pubPath = None
 
@@ -51,7 +51,7 @@ class Visualize(object):
             rospy.logwarn("Warn[Visualize.start]: Already started.")
             return
 
-        pubPathTopic = rospy.get_param(rospy.search_param('pub_path'))
+        pubPathTopic = rospy.get_param(rospy.search_param('pub_path'), "path")
         self.pubPath = rospy.Publisher(pubPathTopic, Path, queue_size=32)
 
         self.started = True
@@ -72,7 +72,7 @@ class Visualize(object):
         if self.lastPathPublishTime.to_sec() + self.publishRate <= currentTime.to_sec():
             # Add to raw path with a timestamped pose from odometers.
             poseStamped = PoseStamped()
-            poseStamped.header.frame_id = self.subKobukiOdomTopic
+            poseStamped.header.frame_id = self.subKobukiOdometryTopic
             poseStamped.header.stamp = currentTime
             poseStamped.pose = pose
 
@@ -80,7 +80,7 @@ class Visualize(object):
 
             # Create and publish the path.
             path = Path()
-            path.header.frame_id = self.subKobukiOdomTopic
+            path.header.frame_id = self.subKobukiOdometryTopic
             path.header.stamp = currentTime
             path.poses = self.rawPath
 

@@ -48,6 +48,7 @@ class Controller(object):
 
         # The sub-controller variables to control various aspects.
         self.recovery = Recovery()
+        self.teleoperator = Teleoperator()
         self.visualize = Visualize()
 
         self.subKobukiOdometry = None
@@ -61,27 +62,26 @@ class Controller(object):
             rospy.logwarn("Warn[Controller.start]: Already started.")
             return
 
-        subKobukiOdometryTopic = rospy.get_param(rospy.search_param('sub_kobuki_odometry'))
+        subKobukiOdometryTopic = rospy.get_param(rospy.search_param('sub_kobuki_odometry'), "evt_odom")
         self.subKobukiOdometry = rospy.Subscriber(subKobukiOdometryTopic,
                                                   Odometry,
                                                   self.sub_kobuki_odometry)
 
-        pubKobukiVelocityTopic = rospy.get_param(rospy.search_param('pub_kobuki_velocity'))
+        pubKobukiVelocityTopic = rospy.get_param(rospy.search_param('pub_kobuki_velocity'), "cmd_vel")
         self.pubKobukiVelocity = rospy.Publisher(pubKobukiVelocityTopic, Twist, queue_size=32)
 
-        pubKobukiResetOdometryTopic = rospy.get_param(rospy.search_param('pub_kobuki_reset_odometry'))
+        pubKobukiResetOdometryTopic = rospy.get_param(rospy.search_param('pub_kobuki_reset_odometry'),
+                                                      "cmd_reset_odom")
         self.pubKobukiResetOdometry = rospy.Publisher(pubKobukiResetOdometryTopic, Empty, queue_size=32)
 
+        self.recovery.start()
+        self.teleoperator.start()
         self.visualize.start()
 
         self.started = True
 
     def reset(self):
         """ Reset all of the variables that change as the robot moves. """
-
-        self.x = 0.0
-        self.y = 0.0
-        self.theta = 0.0
 
         # Reset the robot's odometry.
         #if self.pubKobukiResetOdometry is not None:
@@ -101,13 +101,24 @@ class Controller(object):
                 msg     --  The Odometry message data.
         """
 
+        if not self.started:
+            rospy.logwarn("Warn[Controller.sub_kobuki_odometry]: Initialization has not yet completed.")
+            return
+
         # TODO: Currently, we put the 'update' behavior here, but in the future
         # it should be moved to a timer perhaps.
         if self.resetRequired:
             self.reset()
 
-        if self.recovery.check_recovery():
-            self.recovery.move_recovery()
+        if self.recovery.is_recovering():
+            self.recovery.perform_recovery()
+
+        elif self.teleoperator.is_activated():
+            self.teleoperator.perform_teleoperation()
+
+        # TODO
+        #elif self.pathFollower.has_path():
+        #    self.pathFollower.perform_path_following()
 
         self.visualize.publish_path(msg.pose.pose)
 
