@@ -25,3 +25,11 @@
 import rospy
 
 
+class Teleoperator(object):
+    """ Control the Kobuki remotely via a joystick controller. """
+
+    def __init__(self):
+        """ The constructor for the Teleoperator class. """
+
+        pass
+

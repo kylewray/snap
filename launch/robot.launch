@@ -1,0 +1,62 @@
+<?xml version="1.0" ?>
+<launch>
+  <arg name="init_x" default="0.0" />
+  <arg name="init_y" default="0.0" />
+  <arg name="init_yaw" default="0.0" />
+
+  <include file="$(find kobuki_softnode)/launch/full.launch" />
+
+  <node pkg="fake_localization" name="fake_localization" type="fake_localization">
+    <remap from="base_pose_ground_truth" to="/odom" />
+    <param name="delta_x" value="$(arg init_x)" />
+    <param name="delta_y" value="$(arg init_y)" />
+    <param name="delta_yaw" value="$(arg init_yaw)" />
+  </node>
+
+<!--
+  <node pkg="move_base" type="move_base" respawn="false" name="move_base" output="screen">
+    <rosparam file="$(find kobuki_softapps)/param/costmap_common_params.yaml" command="load" ns="global_costmap" />
+    <rosparam file="$(find kobuki_softapps)/param/costmap_common_params.yaml" command="load" ns="local_costmap" />
+    <rosparam file="$(find kobuki_softapps)/param/local_costmap_params.yaml" command="load" />
+    <rosparam file="$(find kobuki_softapps)/param/global_costmap_params.yaml" command="load" />
+    <rosparam file="$(find kobuki_softapps)/param/dwa_local_planner_params.yaml" command="load" />
+    <remap from="cmd_vel" to="mobile_base/commands/velocity"/>
+  </node>
+-->
+
+  <node pkg="epic" type="epic_navigation_node" name="epic_navigation_node" output="screen">
+    <param name="algorithm" value="harmonic" />
+    <param name="rviz_support" value="true" />
+    <param name="steps_per_update" value="100" />
+    <param name="update_rate" value="30" />
+
+    <param name="sub_occupancy_grid" value="map" />
+    <param name="srv_add_goals" value="add_goals" />
+    <param name="srv_remove_goals" value="remove_goals" />
+    <param name="srv_set_cells" value="set_cells" />
+    <param name="srv_compute_path" value="compute_path" />
+
+    <param name="sub_map_pose_estimate" value="initialpose" />
+    <param name="sub_map_nav_goal" value="move_base_simple/goal" />
+    <param name="pub_map_path" value="path" />
+  </node>
+
+  <node pkg="breakfast" type="breakfast_node" name="breakfast_node" output="screen">
+    <remap from="base_pose_ground_truth" to="odom" /> <!-- nav_msgs -->
+
+    <param name="desired_velocity" value="0.2" />
+
+    <param name="sub_kobuki_odometry" value="odom" />
+    <param name="sub_kobuki_bumper" value="mobile_base/events/bumper" />
+    <param name="sub_kobuki_cliff" value="mobile_base/events/cliff" />
+    <param name="sub_kobuki_wheel_drop" value="mobile_base/events/wheel_drop" />
+    <param name="pub_kobuki_velocity" value="mobile_base/commands/velocity" />
+    <param name="pub_kobuki_reset_odometry" value="mobile_base/commands/reset_odometry" />
+
+    <param name="pub_path" value="path" />
+  </node>
+
+
+</launch>
+
+

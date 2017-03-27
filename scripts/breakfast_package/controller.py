@@ -52,7 +52,7 @@ class Controller(object):
 
         self.subKobukiOdometry = None
         self.pubKobukiVelocity = None
-        self.pubKobukiResetOdom = None
+        self.pubKobukiResetOdometry = None
 
     def start(self):
         """ Start the necessary messages to operate the Kobuki. """
@@ -69,8 +69,8 @@ class Controller(object):
         pubKobukiVelocityTopic = rospy.get_param(rospy.search_param('pub_kobuki_velocity'))
         self.pubKobukiVelocity = rospy.Publisher(pubKobukiVelocityTopic, Twist, queue_size=32)
 
-        pubKobukiResetOdomTopic = rospy.get_param(rospy.search_param('pub_kobuki_reset_odom'))
-        self.pubKobukiResetOdom = rospy.Publisher(pubKobukiResetOdomTopic, Empty, queue_size=32)
+        pubKobukiResetOdometryTopic = rospy.get_param(rospy.search_param('pub_kobuki_reset_odometry'))
+        self.pubKobukiResetOdometry = rospy.Publisher(pubKobukiResetOdometryTopic, Empty, queue_size=32)
 
         self.visualize.start()
 
