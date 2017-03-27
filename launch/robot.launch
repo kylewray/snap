@@ -24,6 +24,7 @@
   </node>
 -->
 
+<!--
   <node pkg="epic" type="epic_navigation_node" name="epic_navigation_node" output="screen">
     <param name="algorithm" value="harmonic" />
     <param name="rviz_support" value="true" />
@@ -36,22 +37,23 @@
     <param name="srv_set_cells" value="set_cells" />
     <param name="srv_compute_path" value="compute_path" />
 
-    <param name="sub_map_pose_estimate" value="initialpose" />
-    <param name="sub_map_nav_goal" value="move_base_simple/goal" />
-    <param name="pub_map_path" value="path" />
+    <param name="sub_map_pose_estimate" value="/initialpose" />
+    <param name="sub_map_nav_goal" value="/move_base_simple/goal" />
+    <param name="pub_map_path" value="/path" />
   </node>
+-->
 
   <node pkg="breakfast" type="breakfast_node" name="breakfast_node" output="screen">
     <remap from="base_pose_ground_truth" to="odom" /> <!-- nav_msgs -->
 
-    <param name="desired_velocity" value="0.2" />
+    <param name="desired_velocity" value="0.3" />
 
     <param name="sub_kobuki_odometry" value="odom" />
-    <param name="sub_kobuki_bumper" value="mobile_base/events/bumper" />
-    <param name="sub_kobuki_cliff" value="mobile_base/events/cliff" />
-    <param name="sub_kobuki_wheel_drop" value="mobile_base/events/wheel_drop" />
-    <param name="pub_kobuki_velocity" value="mobile_base/commands/velocity" />
-    <param name="pub_kobuki_reset_odometry" value="mobile_base/commands/reset_odometry" />
+    <param name="sub_kobuki_bumper" value="~events/bumper" />
+    <param name="sub_kobuki_cliff" value="~events/cliff" />
+    <param name="sub_kobuki_wheel_drop" value="~events/wheel_drop" />
+    <param name="pub_kobuki_velocity" value="~commands/velocity" />
+    <param name="pub_kobuki_reset_odometry" value="~commands/reset_odometry" />
 
     <param name="pub_path" value="path" />
   </node>
