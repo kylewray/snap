@@ -22,6 +22,8 @@
     CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
+import math
+
 import rospy
 
 from geometry_msgs.msg import PoseStamped
@@ -51,10 +53,20 @@ class Visualize(object):
             rospy.logwarn("Warn[Visualize.start]: Already started.")
             return
 
+        rospy.loginfo("Info[Visualize.start]: Starting visualize sub-controller.")
+
         pubPathTopic = rospy.get_param(rospy.search_param('pub_path'), "path")
         self.pubPath = rospy.Publisher(pubPathTopic, Path, queue_size=32)
 
         self.started = True
+
+    def reset(self):
+        """ Reset the visualize variables. """
+
+        rospy.loginfo("Info[Visualize.reset]: Resetting visualize sub-controller.")
+
+        self.rawPath = list()
+        self.lastPathPublishTime = rospy.get_rostime()
 
     def publish_path(self, pose):
         """ Record the path taken, but only at a certain rate.
@@ -70,13 +82,20 @@ class Visualize(object):
         currentTime = rospy.get_rostime()
 
         if self.lastPathPublishTime.to_sec() + self.publishRate <= currentTime.to_sec():
-            # Add to raw path with a timestamped pose from odometers.
-            poseStamped = PoseStamped()
-            poseStamped.header.frame_id = self.subKobukiOdometryTopic
-            poseStamped.header.stamp = currentTime
-            poseStamped.pose = pose
+            # Only consider adding the new pose if there is a large enough difference in location (>= 0.1 meters).
+            if pose is not None and (len(self.rawPath) == 0
+                    or (len(self.rawPath) > 0
+                        and math.sqrt(pow(self.rawPath[-1].pose.position.x - pose.position.x, 2)
+                                    + pow(self.rawPath[-1].pose.position.y - pose.position.y, 2)
+                                    + pow(self.rawPath[-1].pose.position.z - pose.position.z, 2)) >= 0.1)):
 
-            self.rawPath += [poseStamped]
+                # Add to raw path with a timestamped pose from odometers.
+                poseStamped = PoseStamped()
+                poseStamped.header.frame_id = self.subKobukiOdometryTopic
+                poseStamped.header.stamp = currentTime
+                poseStamped.pose = pose
+
+                self.rawPath += [poseStamped]
 
             # Create and publish the path.
             path = Path()

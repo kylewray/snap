@@ -26,13 +26,11 @@ import rospy
 
 from std_msgs.msg import Empty
 from geometry_msgs.msg import Twist
-from nav_msgs.msg import Odometry
-
-#from breakfast.msg import *
-#from breakfast.srv import *
 
 from recovery import *
 from teleoperator import *
+from path_follower import *
+from slam import *
 from visualize import *
 
 
@@ -42,16 +40,17 @@ class Controller(object):
     def __init__(self):
         """ The constructor for the Controller class. """
 
-        # Main controller variables used for determining initialization.
         self.started = False
         self.resetRequired = False
 
-        # The sub-controller variables to control various aspects.
+        self.timer = None
+
         self.recovery = Recovery()
         self.teleoperator = Teleoperator()
+        self.pathFollower = PathFollower()
+        self.slam = SLAM()
         self.visualize = Visualize()
 
-        self.subKobukiOdometry = None
         self.pubKobukiVelocity = None
         self.pubKobukiResetOdometry = None
 
@@ -62,10 +61,7 @@ class Controller(object):
             rospy.logwarn("Warn[Controller.start]: Already started.")
             return
 
-        subKobukiOdometryTopic = rospy.get_param(rospy.search_param('sub_kobuki_odometry'), "evt_odom")
-        self.subKobukiOdometry = rospy.Subscriber(subKobukiOdometryTopic,
-                                                  Odometry,
-                                                  self.sub_kobuki_odometry)
+        rospy.loginfo("Info[Controller.start]: Starting main controller.")
 
         pubKobukiVelocityTopic = rospy.get_param(rospy.search_param('pub_kobuki_velocity'), "cmd_vel")
         self.pubKobukiVelocity = rospy.Publisher(pubKobukiVelocityTopic, Twist, queue_size=32)
@@ -76,12 +72,25 @@ class Controller(object):
 
         self.recovery.start()
         self.teleoperator.start()
+        self.pathFollower.start()
+        self.slam.start()
         self.visualize.start()
+
+        updateRate = float(rospy.get_param(rospy.search_param('update_rate'), "0.1"))
+        self.timer = rospy.Timer(rospy.Duration(updateRate), self.update)
 
         self.started = True
 
     def reset(self):
         """ Reset all of the variables that change as the robot moves. """
+
+        rospy.loginfo("Info[Controller.reset]: Resetting main controller.")
+
+        self.recovery.reset()
+        self.teleoperator.reset()
+        self.pathFollower.reset()
+        self.slam.reset()
+        self.visualize.reset()
 
         # Reset the robot's odometry.
         #if self.pubKobukiResetOdometry is not None:
@@ -94,19 +103,17 @@ class Controller(object):
 
         self.resetRequired = False
 
-    def sub_kobuki_odometry(self, msg):
-        """ Update the odometry information.
+    def update(self, msg):
+        """ Perform an update at the rate of the timer.
 
             Parameters:
-                msg     --  The Odometry message data.
+                msg     --  A TimerEvent object.
         """
 
         if not self.started:
-            rospy.logwarn("Warn[Controller.sub_kobuki_odometry]: Initialization has not yet completed.")
+            rospy.logwarn("Warn[Controller.update]: Initialization has not yet completed.")
             return
 
-        # TODO: Currently, we put the 'update' behavior here, but in the future
-        # it should be moved to a timer perhaps.
         if self.resetRequired:
             self.reset()
 
@@ -116,9 +123,8 @@ class Controller(object):
         elif self.teleoperator.is_activated():
             self.teleoperator.perform_teleoperation()
 
-        # TODO
-        #elif self.pathFollower.has_path():
-        #    self.pathFollower.perform_path_following()
+        elif self.pathFollower.has_path(self.slam):
+            self.pathFollower.perform_path_following(self.slam)
 
-        self.visualize.publish_path(msg.pose.pose)
+        self.visualize.publish_path(self.slam.get_pose_estimate())
 

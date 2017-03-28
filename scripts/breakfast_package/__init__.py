@@ -22,6 +22,6 @@
     CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
-__all__ = ["controller", "recovery", "teleoperater", "path_follower", "visualize"]
+__all__ = ["controller", "recovery", "teleoperater", "path_follower", "slam", "visualize"]
 
 

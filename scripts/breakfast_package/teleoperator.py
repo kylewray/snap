@@ -41,11 +41,20 @@ class Teleoperator(object):
         self.desiredVelocity = float(rospy.get_param(rospy.search_param('desired_velocity'), "0.2"))
         self.desiredTurnRate = float(rospy.get_param(rospy.search_param('desired_turn_rate'), "1.0"))
 
+        self.joySpeed = 0.0
+        self.joyHeading = 0.0
+
         self.subJoy = None
         self.pubKobukiVelocity = None
 
     def start(self):
         """ Start the necessary messages and routines for the teleoperator. """
+
+        if self.started:
+            rospy.logwarn("Warn[Teleoperator.start]: Already started.")
+            return
+
+        rospy.loginfo("Info[Teleoperator.start]: Starting teleoperator sub-controller.")
 
         subJoyTopic = rospy.get_param(rospy.search_param('sub_joy'), "evt_joy")
         self.subJoy = rospy.Subscriber(subJoyTopic, Joy, self.sub_joy)
@@ -54,6 +63,17 @@ class Teleoperator(object):
         self.pubKobukiVelocity = rospy.Publisher(pubKobukiVelocityTopic, Twist, queue_size=32)
 
         self.started = True
+
+    def reset(self):
+        """ Reset the teleoperator variables. """
+
+        rospy.loginfo("Info[Teleoperator.reset]: Resetting teleoperator sub-controller.")
+
+        self.activated = False
+        self.activatedTime = rospy.get_rostime()
+
+        self.joySpeed = 0.0
+        self.joyHeading = 0.0
 
     def is_activated(self):
         """ Check if teleoperation is activated or not.

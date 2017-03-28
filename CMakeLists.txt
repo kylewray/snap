@@ -14,6 +14,7 @@ find_package(catkin REQUIRED COMPONENTS
   nav_msgs
   kobuki_msgs
   message_generation
+  epic
 )
 
 ## System dependencies are found with CMake's conventions
@@ -77,6 +78,7 @@ generate_messages(
   geometry_msgs
   nav_msgs
   kobuki_msgs
+  epic_msgs
 )
 
 ################################################
@@ -111,7 +113,7 @@ generate_messages(
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES breakfast
-  CATKIN_DEPENDS message_runtime
+  CATKIN_DEPENDS message_runtime epic
 #  DEPENDS system_lib
 )
 

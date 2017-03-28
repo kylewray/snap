@@ -54,6 +54,12 @@ class Recovery(object):
     def start(self):
         """ Start the necessary messages for recovery. """
 
+        if self.started:
+            rospy.logwarn("Warn[Recovery.start]: Already started.")
+            return
+
+        rospy.loginfo("Info[Recovery.start]: Starting recovery sub-controller.")
+
         subKobukiBumperTopic = rospy.get_param(rospy.search_param('sub_kobuki_bumper'), "evt_bump")
         self.subKobukiBumper = rospy.Subscriber(subKobukiBumperTopic,
                                                 BumperEvent,
@@ -74,6 +80,16 @@ class Recovery(object):
         self.pubKobukiVelocity = rospy.Publisher(pubKobukiVelocityTopic, Twist, queue_size=32)
 
         self.started = True
+
+    def reset(self):
+        """ Reset the recovery variables. """
+
+        rospy.loginfo("Info[Recovery.reset]: Resetting recovery sub-controller.")
+
+        self.recovery = False
+        self.recoveryStartTime = rospy.get_rostime()
+
+        self.wheelDrop = [False, False]
 
     def is_recovering(self):
         """ Check recovery, returning True if a recovery is necessary, and False if it is not.

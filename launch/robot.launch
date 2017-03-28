@@ -24,24 +24,23 @@
   </node>
 -->
 
-<!--
   <node pkg="epic" type="epic_navigation_node" name="epic_navigation_node" output="screen">
     <param name="algorithm" value="harmonic" />
     <param name="rviz_support" value="true" />
     <param name="steps_per_update" value="100" />
     <param name="update_rate" value="30" />
 
-    <param name="sub_occupancy_grid" value="map" />
+    <param name="sub_occupancy_grid" value="/map" />
+    <param name="sub_map_pose_estimate" value="/initialpose" />
+    <param name="sub_map_nav_goal" value="/move_base_simple/goal" />
+
     <param name="srv_add_goals" value="add_goals" />
     <param name="srv_remove_goals" value="remove_goals" />
     <param name="srv_set_cells" value="set_cells" />
     <param name="srv_compute_path" value="compute_path" />
 
-    <param name="sub_map_pose_estimate" value="/initialpose" />
-    <param name="sub_map_nav_goal" value="/move_base_simple/goal" />
-    <param name="pub_map_path" value="/path" />
+    <param name="pub_map_path" value="path" />
   </node>
--->
 
   <node pkg="breakfast" type="breakfast_node" name="breakfast_node" output="screen">
     <remap from="base_pose_ground_truth" to="odom" />                           <!-- nav_msgs -->
@@ -51,8 +50,11 @@
     <remap from="cmd_vel" to="mobile_base/commands/velocity" />                 <!-- kobuki_msgs -->
     <remap from="cmd_reset_odom" to="mobile_base/commands/reset_odometry" />    <!-- kobuki_msgs -->
     <remap from="joy" to="joy" />                                               <!-- sensor_msgs -->
+    <remap from="epic_compute_path" to="epic_navigation_node/compute_path" />   <!-- epic_msgs -->
 
-    <param name="desired_velocity" value="0.4" />
+    <param name="update_rate" value="0.2" />
+
+    <param name="desired_velocity" value="0.3" />
     <param name="desired_turn_rate" value="2.0" />
 
     <param name="recovery_duration" value="0.5" />
@@ -61,10 +63,13 @@
     <param name="sub_kobuki_bumper" value="evt_bump" />
     <param name="sub_kobuki_cliff" value="evt_cliff" />
     <param name="sub_kobuki_wheel_drop" value="evt_wheel_drop" />
+
     <param name="pub_kobuki_velocity" value="cmd_vel" />
     <param name="pub_kobuki_reset_odometry" value="cmd_reset_odom" />
 
     <param name="sub_joy" value="joy" />
+
+    <param name="srv_epic_compute_path" value="epic_compute_path" />
 
     <param name="pub_path" value="path" />
     <param name="pub_path_rate" value="0.2" />
