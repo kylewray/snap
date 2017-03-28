@@ -1,29 +1,5 @@
 <?xml version="1.0" ?>
 <launch>
-  <arg name="init_x" default="0.0" />
-  <arg name="init_y" default="0.0" />
-  <arg name="init_yaw" default="0.0" />
-
-  <include file="$(find kobuki_softnode)/launch/full.launch" />
-
-  <node pkg="fake_localization" name="fake_localization" type="fake_localization">
-    <remap from="base_pose_ground_truth" to="odom" />
-    <param name="delta_x" value="$(arg init_x)" />
-    <param name="delta_y" value="$(arg init_y)" />
-    <param name="delta_yaw" value="$(arg init_yaw)" />
-  </node>
-
-<!--
-  <node pkg="move_base" type="move_base" respawn="false" name="move_base" output="screen">
-    <rosparam file="$(find kobuki_softapps)/param/costmap_common_params.yaml" command="load" ns="global_costmap" />
-    <rosparam file="$(find kobuki_softapps)/param/costmap_common_params.yaml" command="load" ns="local_costmap" />
-    <rosparam file="$(find kobuki_softapps)/param/local_costmap_params.yaml" command="load" />
-    <rosparam file="$(find kobuki_softapps)/param/global_costmap_params.yaml" command="load" />
-    <rosparam file="$(find kobuki_softapps)/param/dwa_local_planner_params.yaml" command="load" />
-    <remap from="cmd_vel" to="mobile_base/commands/velocity"/>
-  </node>
--->
-
   <node pkg="epic" type="epic_navigation_node" name="epic_navigation_node" output="screen">
     <param name="algorithm" value="harmonic" />
     <param name="rviz_support" value="true" />
@@ -54,7 +30,7 @@
 
     <param name="update_rate" value="0.2" />
 
-    <param name="desired_velocity" value="0.3" />
+    <param name="desired_velocity" value="0.4" />
     <param name="desired_turn_rate" value="2.0" />
 
     <param name="recovery_duration" value="0.5" />
@@ -76,5 +52,4 @@
   </node>
 
 </launch>
-
 

@@ -7,9 +7,10 @@
 
   <node pkg="joy" type="joy_node" name="joy_node" output="screen" />
 
-  <include file="$(find breakfast)/launch/robot.launch" />
+  <include file="$(find breakfast)/launch/agent_robot.launch" />
+  <include file="$(find breakfast)/launch/autonomy.launch" />
 
-  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find breakfast)/rviz/default.rviz" />
+<!--  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find breakfast)/rviz/default.rviz" /> -->
 
 </launch>
 

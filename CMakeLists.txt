@@ -78,7 +78,6 @@ generate_messages(
   geometry_msgs
   nav_msgs
   kobuki_msgs
-  epic_msgs
 )
 
 ################################################
