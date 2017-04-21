@@ -30,6 +30,8 @@ from geometry_msgs.msg import Twist
 from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import Odometry
 
+import math
+
 from epic.srv import ComputePath
 
 
@@ -43,6 +45,7 @@ class PathFollower(object):
 
         self.path = None
 
+        self.updateRate = float(rospy.get_param(rospy.search_param('update_rate'), "0.2"))
         self.desiredVelocity = float(rospy.get_param(rospy.search_param('desired_velocity'), "0.2"))
         self.desiredTurnRate = float(rospy.get_param(rospy.search_param('desired_turn_rate'), "1.0"))
 
@@ -83,6 +86,9 @@ class PathFollower(object):
                 True if a path exists, False otherwise.
         """
 
+        if slam is None:
+            return False
+
         rospy.wait_for_service(self.srvEpicComputePathTopic)
         try:
             srvEpicComputePath = rospy.ServiceProxy(self.srvEpicComputePathTopic, ComputePath)
@@ -92,7 +98,7 @@ class PathFollower(object):
             poseStamped.header.stamp = rospy.get_rostime()
             poseStamped.pose = slam.get_pose_estimate()
 
-            res = srvEpicComputePath(poseStamped, 0.1, 0.1, 10000)
+            res = srvEpicComputePath(poseStamped, 0.1, 0.1, 1000)
             if res is not None:
                 self.path = res.path.poses
 
@@ -102,6 +108,59 @@ class PathFollower(object):
 
         return self.path is not None
 
+    def _compute_speed(self, poseEstimate):
+        """ Compute a speed proportional to acceleration constraints and obstacle congestion.
+
+            Parameters:
+                poseEstimate    --  The current robot pose estimate as a Pose object.
+
+            Returns:
+                The desired speed in meters per second. Default is 0.0 if no path is specified.
+        """
+
+        if self.path is None or poseEstimate is None or len(self.path) <= 1:
+            return 0.0
+
+        # Iterate over the path until 1 meter has been reached.
+
+        return self.desiredVelocity
+
+    def _compute_heading_adjustment(self, poseEstimate):
+        """ Compute a heading adjustment proportional to the next path location and a bound.
+
+            Parameters:
+                poseEstimate    --  The current robot pose estimate as a Pose object.
+        
+            Returns:
+                The desired signed heading adjustment. Default is 0.0 if no path is specified.
+        """
+
+        if self.path is None or poseEstimate is None or len(self.path) <= 1:
+            return 0.0
+
+        # Get the current heading (yaw).
+        currentRoll, currentPitch, currentYaw = euler_from_quaternion([poseEstimate.orientation.x,
+                                                                       poseEstimate.orientation.y,
+                                                                       poseEstimate.orientation.z,
+                                                                       poseEstimate.orientation.w])
+
+        # Use the next pose to compute the heading, but constrain it by a bound.
+        roll, pitch, yaw = euler_from_quaternion([self.path[1].pose.orientation.x,
+                                                  self.path[1].pose.orientation.y,
+                                                  self.path[1].pose.orientation.z,
+                                                  self.path[1].pose.orientation.w])
+
+        headingAdjustment = yaw - currentYaw
+        turnRate = self.updateRate * headingAdjustment
+
+        # The parameter 'desired_turn_rate' determines the maximum degrees per second it can turn.
+        if headingAdjustment > self.desiredTurnRate:
+            return self.desiredTurnRate
+        elif headingAdjustment < -self.desiredTurnRate:
+            return -self.desiredTurnRate
+        else:
+            return headingAdjustment
+
     def perform_path_following(self, slam):
         """ Perform path following control adjustments, sending Twist messages to the Kobuki.
 
@@ -109,34 +168,31 @@ class PathFollower(object):
                 slam    --  The SLAM object, which contains pose estimates.
         """
 
-        # Select the local goal position along the path that does not deviate from the current pose much,
-        # and has a low change in angle (derivative), but also is as far away from the starting location
-        # as possible. Store this value in 'index'.
-        index = 100
-
-        if len(self.path) < index:
+        # If there is no path, then publish empty.
+        if self.path is None or slam is None or len(self.path) <= 1:
+            print("ASDF")
+            control = Twist()
+            self.pubKobukiVelocity.publish(control)
             return
 
+        print("QERTY")
+        print(len(self.path))
+
         poseEstimate = slam.get_pose_estimate()
-        currentRoll, currentPitch, currentYaw = euler_from_quaternion([poseEstimate.orientation.x,
-                                                                       poseEstimate.orientation.y,
-                                                                       poseEstimate.orientation.z,
-                                                                       poseEstimate.orientation.w])
 
-        # Compute the speed based on the distance from the current pose to the 'index' pose.
-        velocity = self.desiredVelocity
+        # Check if we reached the goal to within 0.1 meter. If so, then halt the path follower.
+        if math.sqrt(pow(self.path[-1].pose.position.x - poseEstimate.position.x, 2)
+                   + pow(self.path[-1].pose.position.y - poseEstimate.position.y, 2)) < 0.1:
+            control = Twist()
+            self.pubKobukiVelocity.publish(control)
+            return
 
-        # Construct the twist message which combines both the speed and the angular adjustment.
+        # Construct and publish the twist message which combines both the speed
+        # and the angular adjustment.
         control = Twist()
 
-        control.linear.x = velocity
-
-        roll, pitch, yaw = euler_from_quaternion([self.path[index].pose.orientation.x,
-                                                  self.path[index].pose.orientation.y,
-                                                  self.path[index].pose.orientation.z,
-                                                  self.path[index].pose.orientation.w])
-
-        control.angular.z += yaw - currentYaw
+        control.linear.x = self._compute_speed(poseEstimate)
+        control.angular.z += self._compute_heading_adjustment(poseEstimate)
 
         self.pubKobukiVelocity.publish(control)
 
