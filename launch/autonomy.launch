@@ -20,9 +20,9 @@
 
   <node pkg="breakfast" type="breakfast_node" name="breakfast_node" output="screen">
     <remap from="base_pose_ground_truth" to="odom" />                           <!-- nav_msgs -->
-    <remap from="mobile_base/events/bumper" to="evt_bump" />                    <!-- kobuki_msgs -->
-    <remap from="mobile_base/events/cliff" to="evt_cliff" />                    <!-- kobuki_msgs -->
-    <remap from="mobile_base/events/wheel_drop" to="evt_wheel_drop" />          <!-- kobuki_msgs -->
+    <remap from="evt_bump" to="mobile_base/events/bumper" />                    <!-- kobuki_msgs -->
+    <remap from="evt_cliff" to="mobile_base/events/cliff" />                    <!-- kobuki_msgs -->
+    <remap from="evt_wheel_drop" to="mobile_base/events/wheel_drop" />          <!-- kobuki_msgs -->
     <remap from="cmd_vel" to="mobile_base/commands/velocity" />                 <!-- kobuki_msgs -->
     <remap from="cmd_reset_odom" to="mobile_base/commands/reset_odometry" />    <!-- kobuki_msgs -->
     <remap from="joy" to="joy" />                                               <!-- sensor_msgs -->
