@@ -31,7 +31,7 @@
     <param name="update_rate" value="0.2" />
 
     <param name="desired_velocity" value="0.4" />
-    <param name="desired_turn_rate" value="2.0" />
+    <param name="desired_turn_rate" value="1.57079632679" />
 
     <param name="recovery_duration" value="0.5" />
 
