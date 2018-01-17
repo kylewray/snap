@@ -2,10 +2,24 @@
 <launch>
 <!-- <param name="/use_sim_time" value="true" /> -->
 
+<!--
   <arg name="map_name" default="$(find breakfast)/maps/umass.yaml" />
   <node pkg="map_server" type="map_server" name="map_server" output="screen" args="$(arg map_name)" />
+-->
 
   <node pkg="joy" type="joy_node" name="joy_node" output="screen" />
+
+  <include file="$(find openni_launch)/launch/openni.launch" />
+
+  <node pkg="depthimage_to_laserscan" type="depthimage_to_laserscan" name="depthimage_to_laserscan_node" output="screen">
+    <remap from="image" to="/camera/depth/image_raw" />
+  </node>
+
+  <node pkg="tf" type="static_transform_publisher" name="base_link_to_laser" args="0 0 0.3048 0 0 0 /base_link /camera_link 100"/>
+
+  <node pkg="gmapping" type="slam_gmapping" name="slam_gmapping_node" output="screen">
+    <remap from="base_scan" to="/scan" />
+  </node>
 
   <include file="$(find breakfast)/launch/agent_robot.launch" />
   <include file="$(find breakfast)/launch/autonomy.launch" />

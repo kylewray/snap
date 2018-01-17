@@ -42,6 +42,7 @@ class PathFollower(object):
         """ The constructor for the PathFollower class. """
 
         self.started = False
+        self.paused = False
 
         self.path = None
 
@@ -168,15 +169,11 @@ class PathFollower(object):
                 slam    --  The SLAM object, which contains pose estimates.
         """
 
-        # If there is no path, then publish empty.
-        if self.path is None or slam is None or len(self.path) <= 1:
-            print("ASDF")
+        # If there is no path or the path following is paused, then publish empty.
+        if self.path is None or slam is None or len(self.path) <= 1 or self.paused:
             control = Twist()
             self.pubKobukiVelocity.publish(control)
             return
-
-        print("QERTY")
-        print(len(self.path))
 
         poseEstimate = slam.get_pose_estimate()
 

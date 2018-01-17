@@ -26,6 +26,8 @@ import rospy
 
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
+from sensor_msgs.msg import PointCloud2
+from sensor_msgs.msg import LaserScan
 
 
 class SLAM(object):
@@ -39,6 +41,8 @@ class SLAM(object):
         self.poseEstimate = None
 
         self.subKobukiOdometry = None
+        self.subDepthPointCloud = None
+        self.pubLaserScan = None
 
     def start(self):
         """ Start the necessary messages to create a map and localize. """
@@ -53,6 +57,14 @@ class SLAM(object):
         self.subKobukiOdometry = rospy.Subscriber(subKobukiOdometryTopic,
                                                   Odometry,
                                                   self.sub_kobuki_odometry)
+
+        subDepthPointCloudTopic = rospy.get_param(rospy.search_param('sub_depth_point_cloud'), "depth_point_cloud")
+        self.subDepthPointCloud = rospy.Subscriber(subDepthPointCloudTopic,
+                                                   PointCloud2,
+                                                   self.sub_depth_point_cloud)
+
+        pubLaserScanTopic = rospy.get_param(rospy.search_param('pub_laser_scan'), "scan")
+        self.pubLaserScan = rospy.Publisher(pubLaserScanTopic, LaserScan, queue_size=8)
 
         self.started = True
 
@@ -84,4 +96,31 @@ class SLAM(object):
             return
 
         self.poseEstimate = msg.pose.pose
+
+    def sub_depth_point_cloud(self, msg):
+        """ Update the raw depth point cloud information, including sub-sampling and extracting abstract data.
+
+            Parameters:
+                msg     --  The raw PointCloud2 message data.
+        """
+
+        if not self.started:
+            rospy.logwarn("Warn[SLAM.sub_depth_point_cloud]: Initialization has not yet completed.")
+            return
+
+        # TODO: Take raw point cloud, find points at a height, populate a Laser whatever msg, publish on gmapping topic...
+        # Run gmapping in separate window. In rviz listen to the map topic. See how it does at mapping...
+
+        #fakeLaserScan = LaserScan()
+        #fakeLaserScan.header = msg.header
+        #fakeLaserScan.angle_min = -0.994838
+        #fakeLaserScan.angle_max = 0.994838
+        #fakeLaserScan.angle_increment = (0.994838 * 2.0) / 
+        #fakeLaserScan.time_increment = 0.0
+        #fakeLaserScan.scan_time = 1.0 / 30.0
+        #fakeLaserScan.
+        #fakeLaserScan.
+        #fakeLaserScan.
+
+        #self.pubLaserScan.publish(fakeLaserScan)
 

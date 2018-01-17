@@ -1,5 +1,6 @@
 <?xml version="1.0" ?>
 <launch>
+
   <node pkg="epic" type="epic_navigation_node" name="epic_navigation_node" output="screen">
     <param name="algorithm" value="harmonic" />
     <param name="rviz_support" value="true" />
@@ -26,6 +27,7 @@
     <remap from="cmd_vel" to="mobile_base/commands/velocity" />                 <!-- kobuki_msgs -->
     <remap from="cmd_reset_odom" to="mobile_base/commands/reset_odometry" />    <!-- kobuki_msgs -->
     <remap from="joy" to="joy" />                                               <!-- sensor_msgs -->
+    <remap from="depth_points" to="camera/depth/points" />                      <!-- sensor_msgs -->
     <remap from="epic_compute_path" to="epic_navigation_node/compute_path" />   <!-- epic_msgs -->
 
     <param name="update_rate" value="0.2" />
@@ -44,6 +46,9 @@
     <param name="pub_kobuki_reset_odometry" value="cmd_reset_odom" />
 
     <param name="sub_joy" value="joy" />
+    <param name="sub_depth_point_cloud" value="depth_points" />
+
+    <param name="pub_laser_scan" value="scan" />
 
     <param name="srv_epic_compute_path" value="epic_compute_path" />
 
