@@ -27,6 +27,8 @@ import rospy
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import Joy
 
+import numpy as np
+
 
 class Teleoperator(object):
     """ Control the Kobuki remotely via a joystick controller. """
@@ -38,11 +40,12 @@ class Teleoperator(object):
         self.activated = False
         self.activatedTime = rospy.get_rostime()
 
-        self.desiredVelocity = float(rospy.get_param(rospy.search_param('desired_velocity'), "0.2"))
-        self.desiredTurnRate = float(rospy.get_param(rospy.search_param('desired_turn_rate'), "1.0"))
+        self.maxTeleoperatorSpeed = float(rospy.get_param("~max_teleoperator_speed", "0.4"))
+        self.maxTeleoperatorHeading = float(rospy.get_param("~max_teleoperator_heading", str(np.pi / 2.0)))
+        self.teleoperatorJoyDeadzone = float(rospy.get_param("~teleoperator_joy_deadzone", "0.1"))
 
-        self.joySpeed = 0.0
-        self.joyHeading = 0.0
+        self.joyDesiredLongitudinal = 0.0
+        self.joyDesiredLateral = 0.0
 
         self.subJoy = None
         self.pubKobukiVelocity = None
@@ -56,10 +59,10 @@ class Teleoperator(object):
 
         rospy.loginfo("Info[Teleoperator.start]: Starting teleoperator sub-controller.")
 
-        subJoyTopic = rospy.get_param(rospy.search_param('sub_joy'), "evt_joy")
+        subJoyTopic = rospy.get_param("~sub_joy", "evt_joy")
         self.subJoy = rospy.Subscriber(subJoyTopic, Joy, self.sub_joy)
 
-        pubKobukiVelocityTopic = rospy.get_param(rospy.search_param('pub_kobuki_velocity'), "cmd_vel")
+        pubKobukiVelocityTopic = rospy.get_param("~pub_kobuki_velocity", "cmd_vel")
         self.pubKobukiVelocity = rospy.Publisher(pubKobukiVelocityTopic, Twist, queue_size=32)
 
         self.started = True
@@ -72,8 +75,8 @@ class Teleoperator(object):
         self.activated = False
         self.activatedTime = rospy.get_rostime()
 
-        self.joySpeed = 0.0
-        self.joyHeading = 0.0
+        self.joyDesiredLongitudinal = 0.0
+        self.joyDesiredLateral = 0.0
 
     def is_activated(self):
         """ Check if teleoperation is activated or not.
@@ -84,8 +87,13 @@ class Teleoperator(object):
 
         return self.activated
 
-    def perform_teleoperation(self):
-        """ Perform the teleoperation movement. """
+    def perform_teleoperation(self, slam, velocity):
+        """ Perform the teleoperation movement.
+
+            Parameters:
+                slam        --  The SLAM object, which contains pose estimates.
+                velocity    --  The Velocity object, which is a speed/heading PID controller.
+        """
 
         if not self.started:
             rospy.logwarn("Warn[Teleoperator.perform_teleoperation]: Initialization has not yet completed.")
@@ -94,9 +102,19 @@ class Teleoperator(object):
         if not self.activated:
             return
 
+        if abs(self.joyDesiredLongitudinal) >= self.teleoperatorJoyDeadzone:
+            desiredSpeed = self.joyDesiredLongitudinal * self.maxTeleoperatorSpeed
+        else:
+            desiredSpeed = 0.0
+
+        if abs(self.joyDesiredLateral) >= self.teleoperatorJoyDeadzone:
+            desiredHeading = slam.get_heading_estimate() + self.joyDesiredLateral * self.maxTeleoperatorHeading
+        else:
+            desiredHeading = slam.get_heading_estimate()
+
         control = Twist()
-        control.linear.x = self.joySpeed * self.desiredVelocity
-        control.angular.z = self.joyHeading * self.desiredTurnRate
+        control.linear.x = slam.get_speed_estimate() + velocity.compute_speed(slam, desiredSpeed)
+        control.angular.z = velocity.compute_heading(slam, desiredHeading)
 
         self.pubKobukiVelocity.publish(control)
 
@@ -117,12 +135,7 @@ class Teleoperator(object):
             else:
                 print("Teleoperation deactivated.")
 
-        # The "left axes" controls the speed (forward/backward).
-        self.joySpeed = msg.axes[1]
-
-        # The "right axes" controls the heading (left/right).
-        self.joyHeading = msg.axes[3]
-
-        #print(msg.axes)
-        #print(msg.buttons)
+        # The left axis stick controls longitudinal and lateral desired set point relative to the robot.
+        self.joyDesiredLongitudinal = msg.axes[1]
+        self.joyDesiredLateral = msg.axes[0]
 

@@ -29,6 +29,8 @@ from kobuki_msgs.msg import BumperEvent
 from kobuki_msgs.msg import CliffEvent
 from kobuki_msgs.msg import WheelDropEvent
 
+import numpy as np
+
 
 class Recovery(object):
     """ A recovery mechanism to handle unexpected bumps, senses cliffs, or wheel drops. """
@@ -39,11 +41,15 @@ class Recovery(object):
         self.started = False
         self.recovery = False
         self.recoveryStartTime = rospy.get_rostime()
+        self.recoveryTotalDistance = 0.0
+        self.recoveryLastPoseEstimate = None
 
         self.wheelDrop = [False, False]
 
-        self.recoveryDuration = float(rospy.get_param(rospy.search_param("recovery_duration"), "0.5"))
-        self.desiredVelocity = float(rospy.get_param(rospy.search_param('desired_velocity'), "0.2"))
+        self.maxRecoveryDuration = float(rospy.get_param("~max_recovery_duration", "1.0"))
+        self.maxRecoveryDistance = float(rospy.get_param("~max_recovery_distance", "0.5"))
+        self.maxRecoverySpeed = float(rospy.get_param("~max_recovery_speed", "0.2"))
+        self.maxRecoveryHeading = float(rospy.get_param("~max_recovery_heading", str(np.pi / 2.0)))
 
         self.subKobukiBumper = None
         self.subKobukiCliff = None
@@ -60,23 +66,22 @@ class Recovery(object):
 
         rospy.loginfo("Info[Recovery.start]: Starting recovery sub-controller.")
 
-        subKobukiBumperTopic = rospy.get_param(rospy.search_param('sub_kobuki_bumper'), "evt_bump")
+        subKobukiBumperTopic = rospy.get_param("~sub_kobuki_bumper", "evt_bump")
         self.subKobukiBumper = rospy.Subscriber(subKobukiBumperTopic,
                                                 BumperEvent,
                                                 self.sub_kobuki_bumper)
 
-        subKobukiCliffTopic = rospy.get_param(rospy.search_param('sub_kobuki_cliff'), "evt_cliff")
+        subKobukiCliffTopic = rospy.get_param("~sub_kobuki_cliff", "evt_cliff")
         self.subKobukiCliff = rospy.Subscriber(subKobukiCliffTopic,
                                                CliffEvent,
                                                self.sub_kobuki_cliff)
 
-        subKobukiWheelDropTopic = rospy.get_param(rospy.search_param('sub_kobuki_wheel_drop'),
-                                                  "evt_wheel_drop")
+        subKobukiWheelDropTopic = rospy.get_param("~sub_kobuki_wheel_drop", "evt_wheel_drop")
         self.subKobukiWheelDrop = rospy.Subscriber(subKobukiWheelDropTopic,
                                                    WheelDropEvent,
                                                    self.sub_kobuki_wheel_drop)
 
-        pubKobukiVelocityTopic = rospy.get_param(rospy.search_param('pub_kobuki_velocity'))
+        pubKobukiVelocityTopic = rospy.get_param("~pub_kobuki_velocity", "cmd_vel")
         self.pubKobukiVelocity = rospy.Publisher(pubKobukiVelocityTopic, Twist, queue_size=32)
 
         self.started = True
@@ -88,11 +93,16 @@ class Recovery(object):
 
         self.recovery = False
         self.recoveryStartTime = rospy.get_rostime()
+        self.recoveryTotalDistance = 0.0
+        self.recoveryLastPoseEstimate = None
 
         self.wheelDrop = [False, False]
 
-    def is_recovering(self):
+    def is_recovering(self, slam):
         """ Check recovery, returning True if a recovery is necessary, and False if it is not.
+
+            Parameters:
+                slam    --  The SLAM object, which contains pose estimates.
 
             Returns:
                 True if a recovery is necessary, and False if it is not.
@@ -105,13 +115,27 @@ class Recovery(object):
         if not self.recovery:
             return False
 
-        # Now we check for wall and cliff recovery. We will only perform the recovery movement
-        # as long as the recovery duration. Afterwards, we terminate recovery.
+        # If we have run out of time, then we terminate.
         currentTime = rospy.get_rostime()
 
-        if self.recoveryStartTime.to_sec() + self.recoveryDuration <= currentTime.to_sec():
+        if self.recoveryStartTime.to_sec() + self.maxRecoveryDuration <= currentTime.to_sec():
             self.recovery = False
             return False
+
+        # If we have not run out of time yet, then we check the distance instead.
+        currentPoseEstimate = slam.get_pose_estimate()
+
+        if self.recoveryLastPoseEstimate is not None:
+            self.recoveryTotalDistance += np.sqrt(pow(currentPoseEstimate.position.x
+                                                      - self.recoveryLastPoseEstimate.position.x, 2)
+                                                  + pow(currentPoseEstimate.position.y
+                                                        - self.recoveryLastPoseEstimate.position.y, 2))
+
+            if self.recoveryTotalDistance > self.maxRecoveryDistance:
+                self.recovery = False
+                return False
+
+        self.recoveryLastPoseEstimate = currentPoseEstimate
 
         return True
 
@@ -124,8 +148,13 @@ class Recovery(object):
 
         return self.wheelDrop[0] or self.wheelDrop[1]
 
-    def perform_recovery(self):
-        """ Move away from a wall or cliff backwards using the relevant Kobuki messages. """
+    def perform_recovery(self, slam, velocity):
+        """ Move away from a wall or cliff backwards using the relevant Kobuki messages.
+
+            Parameters:
+                slam        --  The SLAM object, which contains pose estimates.
+                velocity    --  The Velocity object, which is a speed/heading PID controller.
+        """
 
         if not self.started:
             rospy.logwarn("Warn[Recovery.perform_recovery]: Initialization has not yet completed.")
@@ -139,7 +168,7 @@ class Recovery(object):
 
         # Otherwise, we perform a basic recovery by moving backwards for a short time.
         control = Twist()
-        control.linear.x = -self.desiredVelocity
+        control.linear.x = velocity.compute_speed(slam, -self.maxRecoverySpeed)
 
         self.pubKobukiVelocity.publish(control)
 
@@ -156,6 +185,8 @@ class Recovery(object):
         if msg.state == BumperEvent.PRESSED:
             self.recovery = True
             self.recoveryStartTime = rospy.get_rostime()
+            self.recoveryTotalDistance = 0.0
+            self.recoveryLastPoseEstimate = None
 
     def sub_kobuki_cliff(self, msg):
         """ This method checks for sensing a cliff.
@@ -170,6 +201,8 @@ class Recovery(object):
         if msg.state == CliffEvent.CLIFF:
             self.recovery = True
             self.recoveryStartTime = rospy.get_rostime()
+            self.recoveryTotalDistance = 0.0
+            self.recoveryLastPoseEstimate = None
 
     def sub_kobuki_wheel_drop(self, msg):
         """ This method checks for sensing a wheel drop.

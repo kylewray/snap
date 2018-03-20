@@ -41,8 +41,8 @@ class Visualize(object):
         self.rawPath = list()
         self.lastPathPublishTime = rospy.get_rostime()
 
-        self.publishRate = float(rospy.get_param(rospy.search_param('pub_path_rate'), "0.2"))
-        self.subKobukiOdometryTopic = rospy.get_param(rospy.search_param('sub_kobuki_odometry'), "odom")
+        self.publishRate = float(rospy.get_param("~pub_path_rate", "0.2"))
+        self.subKobukiOdometryTopic = rospy.get_param("~sub_kobuki_odometry", "odom")
 
         self.pubPath = None
 
@@ -55,7 +55,7 @@ class Visualize(object):
 
         rospy.loginfo("Info[Visualize.start]: Starting visualize sub-controller.")
 
-        pubPathTopic = rospy.get_param(rospy.search_param('pub_path'), "path")
+        pubPathTopic = rospy.get_param("~pub_path", "path")
         self.pubPath = rospy.Publisher(pubPathTopic, Path, queue_size=32)
 
         self.started = True

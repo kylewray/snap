@@ -5,7 +5,9 @@
   <arg name="map_name" default="$(find breakfast)/maps/umass.yaml" />
   <node pkg="map_server" type="map_server" name="map_server" output="screen" args="$(arg map_name)" />
 
-  <node pkg="joy" type="joy_node" name="joy_node" output="screen" />
+  <node pkg="joy" type="joy_node" name="joy_node" output="screen">
+    <param name="dev" value="/dev/input/js2" />
+  </node>
 
   <include file="$(find breakfast)/launch/agent_sim.launch" />
   <include file="$(find breakfast)/launch/autonomy.launch" />

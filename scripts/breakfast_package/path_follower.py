@@ -24,13 +24,11 @@
 
 import rospy
 
-from tf.transformations import euler_from_quaternion
-
 from geometry_msgs.msg import Twist
 from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import Odometry
 
-import math
+import numpy as np
 
 from epic.srv import ComputePath
 
@@ -45,12 +43,15 @@ class PathFollower(object):
         self.paused = False
 
         self.path = None
+        self.lastComputePathUpdateTime = None
+        self.computePathSecondsPerUpdate = 1.0 / float(rospy.get_param("~compute_path_update_rate", "10.0"))
 
-        self.updateRate = float(rospy.get_param(rospy.search_param('update_rate'), "0.2"))
-        self.desiredVelocity = float(rospy.get_param(rospy.search_param('desired_velocity'), "0.2"))
-        self.desiredTurnRate = float(rospy.get_param(rospy.search_param('desired_turn_rate'), "1.0"))
+        self.maxPathFollowerSpeed = float(rospy.get_param("~max_path_follower_speed", "0.2"))
+        self.maxPathFollowerHeading = float(rospy.get_param("~max_path_follower_heading", str(np.pi / 2.0)))
 
-        self.srvEpicComputePathTopic = rospy.get_param(rospy.search_param('srv_epic_compute_path'), "epic_compute_path")
+        self.minValidPathListSize = int(rospy.get_param("~min_valid_path_list_size", "5"))
+
+        self.srvEpicComputePathTopic = rospy.get_param("~srv_epic_compute_path", "epic_compute_path")
 
         self.pubKobukiVelocity = None
 
@@ -63,9 +64,9 @@ class PathFollower(object):
 
         rospy.loginfo("Info[PathFollower.start]: Starting path follower sub-controller.")
 
-        self.subKobukiOdometryTopic = rospy.get_param(rospy.search_param('sub_kobuki_odometry'), "odom")
+        self.subKobukiOdometryTopic = rospy.get_param("~sub_kobuki_odometry", "odom")
 
-        pubKobukiVelocityTopic = rospy.get_param(rospy.search_param('pub_kobuki_velocity'), "cmd_vel")
+        pubKobukiVelocityTopic = rospy.get_param("~pub_kobuki_velocity", "cmd_vel")
         self.pubKobukiVelocity = rospy.Publisher(pubKobukiVelocityTopic, Twist, queue_size=32)
 
         self.started = True
@@ -76,6 +77,7 @@ class PathFollower(object):
         rospy.loginfo("Info[PathFollower.reset]: Resetting path follower sub-controller.")
 
         self.path = None
+        self.lastComputePathUpdateTime = None
 
     def has_path(self, slam):
         """ Determine if a path is set or not.
@@ -90,106 +92,82 @@ class PathFollower(object):
         if slam is None:
             return False
 
-        rospy.wait_for_service(self.srvEpicComputePathTopic)
-        try:
-            srvEpicComputePath = rospy.ServiceProxy(self.srvEpicComputePathTopic, ComputePath)
+        currentTime = rospy.get_rostime().to_sec()
 
-            poseStamped = PoseStamped()
-            poseStamped.header.frame_id = self.subKobukiOdometryTopic
-            poseStamped.header.stamp = rospy.get_rostime()
-            poseStamped.pose = slam.get_pose_estimate()
+        if (self.lastComputePathUpdateTime is None 
+                or (self.lastComputePathUpdateTime + self.computePathSecondsPerUpdate <= currentTime)):
 
-            res = srvEpicComputePath(poseStamped, 0.1, 0.1, 1000)
-            if res is not None:
-                self.path = res.path.poses
+            print("TIME TO COMPUTE A NEW PATH!")
 
-        except rospy.ServiceException:
-            rospy.logwarn("Warning[PathFollower.has_path]: Failed to execute service call ComputePath in 'epic'.")
-            self.path = None
+            rospy.wait_for_service(self.srvEpicComputePathTopic)
+            try:
+                srvEpicComputePath = rospy.ServiceProxy(self.srvEpicComputePathTopic, ComputePath)
+
+                poseStamped = PoseStamped()
+                poseStamped.header.frame_id = self.subKobukiOdometryTopic
+                poseStamped.header.stamp = rospy.get_rostime()
+                poseStamped.pose = slam.get_pose_estimate()
+
+                res = srvEpicComputePath(poseStamped, 0.1, 0.1, 1000)
+                if res is not None and len(res.path.poses) >= self.minValidPathListSize:
+                    self.path = res.path.poses
+                else:
+                    raise rospy.ServiceException()
+
+            except rospy.ServiceException:
+                rospy.logwarn("Warning[PathFollower.has_path]: Failed to execute service call ComputePath in 'epic'.")
+                self.path = None
+
+            print("-> DONE COMPUTING A NEW PATH!")
+
+        self.lastComputePathUpdateTime = currentTime
 
         return self.path is not None
 
-    def _compute_speed(self, poseEstimate):
-        """ Compute a speed proportional to acceleration constraints and obstacle congestion.
-
-            Parameters:
-                poseEstimate    --  The current robot pose estimate as a Pose object.
-
-            Returns:
-                The desired speed in meters per second. Default is 0.0 if no path is specified.
-        """
-
-        if self.path is None or poseEstimate is None or len(self.path) <= 1:
-            return 0.0
-
-        # Iterate over the path until 1 meter has been reached.
-
-        return self.desiredVelocity
-
-    def _compute_heading_adjustment(self, poseEstimate):
-        """ Compute a heading adjustment proportional to the next path location and a bound.
-
-            Parameters:
-                poseEstimate    --  The current robot pose estimate as a Pose object.
-        
-            Returns:
-                The desired signed heading adjustment. Default is 0.0 if no path is specified.
-        """
-
-        if self.path is None or poseEstimate is None or len(self.path) <= 1:
-            return 0.0
-
-        # Get the current heading (yaw).
-        currentRoll, currentPitch, currentYaw = euler_from_quaternion([poseEstimate.orientation.x,
-                                                                       poseEstimate.orientation.y,
-                                                                       poseEstimate.orientation.z,
-                                                                       poseEstimate.orientation.w])
-
-        # Use the next pose to compute the heading, but constrain it by a bound.
-        roll, pitch, yaw = euler_from_quaternion([self.path[1].pose.orientation.x,
-                                                  self.path[1].pose.orientation.y,
-                                                  self.path[1].pose.orientation.z,
-                                                  self.path[1].pose.orientation.w])
-
-        headingAdjustment = yaw - currentYaw
-        turnRate = self.updateRate * headingAdjustment
-
-        # The parameter 'desired_turn_rate' determines the maximum degrees per second it can turn.
-        if headingAdjustment > self.desiredTurnRate:
-            return self.desiredTurnRate
-        elif headingAdjustment < -self.desiredTurnRate:
-            return -self.desiredTurnRate
-        else:
-            return headingAdjustment
-
-    def perform_path_following(self, slam):
+    def perform_path_following(self, slam, velocity):
         """ Perform path following control adjustments, sending Twist messages to the Kobuki.
 
             Parameters:
-                slam    --  The SLAM object, which contains pose estimates.
+                slam        --  The SLAM object, which contains pose estimates.
+                velocity    --  The Velocity object, which is a speed/heading PID controller.
         """
 
         # If there is no path or the path following is paused, then publish empty.
-        if self.path is None or slam is None or len(self.path) <= 1 or self.paused:
+        if self.path is None or slam is None or len(self.path) <= self.minValidPathListSize or self.paused:
             control = Twist()
             self.pubKobukiVelocity.publish(control)
             return
 
         poseEstimate = slam.get_pose_estimate()
+        distanceToGoal = np.sqrt(pow(self.path[-1].pose.position.x - poseEstimate.position.x, 2)
+                                 + pow(self.path[-1].pose.position.y - poseEstimate.position.y, 2))
 
         # Check if we reached the goal to within 0.1 meter. If so, then halt the path follower.
-        if math.sqrt(pow(self.path[-1].pose.position.x - poseEstimate.position.x, 2)
-                   + pow(self.path[-1].pose.position.y - poseEstimate.position.y, 2)) < 0.1:
+        if distanceToGoal < 0.1:
             control = Twist()
             self.pubKobukiVelocity.publish(control)
             return
+
+        # Compute a pose that is 3 seconds away given the current speed.
+        print("SLAM Speed Estimate: %.5f" % (slam.get_speed_estimate()))
+        # TODO TODO TODO
+
+        # Change the speed to half speed near the goal. Also change the heading path location accordingly.
+        if distanceToGoal >= 1.0:
+            desiredSpeed = self.maxPathFollowerSpeed
+            desiredHeading = np.arctan2(self.path[-1].pose.position.y - poseEstimate.position.y,
+                                        self.path[-1].pose.position.x - poseEstimate.position.x)
+        else:
+            desiredSpeed = self.maxPathFollowerSpeed / 2.0
+            desiredHeading = np.arctan2(self.path[-1].pose.position.y - poseEstimate.position.y,
+                                        self.path[-1].pose.position.x - poseEstimate.position.x)
 
         # Construct and publish the twist message which combines both the speed
         # and the angular adjustment.
         control = Twist()
 
-        control.linear.x = self._compute_speed(poseEstimate)
-        control.angular.z += self._compute_heading_adjustment(poseEstimate)
+        control.linear.x = velocity.compute_speed(slam, desiredSpeed)
+        control.angular.z = velocity.compute_heading(slam, desiredHeading)
 
         self.pubKobukiVelocity.publish(control)
 

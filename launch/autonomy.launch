@@ -30,12 +30,18 @@
     <remap from="depth_points" to="camera/depth/points" />                      <!-- sensor_msgs -->
     <remap from="epic_compute_path" to="epic_navigation_node/compute_path" />   <!-- epic_msgs -->
 
-    <param name="update_rate" value="0.2" />
+    <param name="update_rate" value="10" />
 
-    <param name="desired_velocity" value="0.4" />
-    <param name="desired_turn_rate" value="1.57079632679" />
+    <param name="max_recovery_speed" value="0.3" />
+    <param name="max_recovery_heading" value="1.57079632679" />
+    <param name="max_recovery_duration" value="1.0" />
+    <param name="max_recovery_distance" value="0.25" />
 
-    <param name="recovery_duration" value="0.5" />
+    <param name="max_teleoperator_speed" value="0.3" />
+    <param name="max_teleoperator_heading" value="1.57079632679" />
+
+    <param name="max_path_follower_speed" value="0.3" />
+    <param name="max_path_follower_heading" value="1.57079632679" />
 
     <param name="sub_kobuki_odometry" value="odom" />
     <param name="sub_kobuki_bumper" value="evt_bump" />

@@ -24,10 +24,15 @@
 
 import rospy
 
+from tf.transformations import euler_from_quaternion
+
 from geometry_msgs.msg import Twist
+from geometry_msgs.msg import Point
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import PointCloud2
 from sensor_msgs.msg import LaserScan
+
+import numpy as np
 
 
 class SLAM(object):
@@ -38,7 +43,10 @@ class SLAM(object):
 
         self.started = False
 
+        self.lastUpdateTime = None
         self.poseEstimate = None
+        self.maxSpeedEstimates = int(rospy.get_param("~max_speed_estimates", "20"))
+        self.speedEstimates = [0.0 for i in range(self.maxSpeedEstimates)]
 
         self.subKobukiOdometry = None
         self.subDepthPointCloud = None
@@ -53,17 +61,17 @@ class SLAM(object):
 
         rospy.loginfo("Info[SLAM.start]: Starting SLAM sub-controller.")
 
-        subKobukiOdometryTopic = rospy.get_param(rospy.search_param('sub_kobuki_odometry'), "odom")
+        subKobukiOdometryTopic = rospy.get_param("~sub_kobuki_odometry", "odom")
         self.subKobukiOdometry = rospy.Subscriber(subKobukiOdometryTopic,
                                                   Odometry,
                                                   self.sub_kobuki_odometry)
 
-        subDepthPointCloudTopic = rospy.get_param(rospy.search_param('sub_depth_point_cloud'), "depth_point_cloud")
+        subDepthPointCloudTopic = rospy.get_param("~sub_depth_point_cloud", "depth_point_cloud")
         self.subDepthPointCloud = rospy.Subscriber(subDepthPointCloudTopic,
                                                    PointCloud2,
                                                    self.sub_depth_point_cloud)
 
-        pubLaserScanTopic = rospy.get_param(rospy.search_param('pub_laser_scan'), "scan")
+        pubLaserScanTopic = rospy.get_param("~pub_laser_scan", "scan")
         self.pubLaserScan = rospy.Publisher(pubLaserScanTopic, LaserScan, queue_size=8)
 
         self.started = True
@@ -73,7 +81,9 @@ class SLAM(object):
 
         rospy.loginfo("Info[SLAM.reset]: Resetting SLAM sub-controller.")
 
+        self.lastUpdateTime = None
         self.poseEstimate = None
+        self.speedEstimates = [0.0 for i in range(self.maxSpeedEstimates)]
 
     def get_pose_estimate(self):
         """ Return the current pose estimate (localization).
@@ -83,6 +93,69 @@ class SLAM(object):
         """
 
         return self.poseEstimate
+
+    def get_speed_estimate(self):
+        """ Get a speed estimate from the history of pose estimates (localization).
+
+            Returns:
+                The current speed estimate as a signed float.
+        """
+
+        if len(self.speedEstimates) == 0:
+            return 0.0
+
+        return np.average(self.speedEstimates)
+
+    def get_heading_estimate(self):
+        """ Get the heading estimate from the current pose estimate (localization).
+
+            Returns:
+                The current heading estimate as a float in radians on [-pi, pi].
+        """
+
+        roll, pitch, yaw = euler_from_quaternion([self.poseEstimate.orientation.x,
+                                                  self.poseEstimate.orientation.y,
+                                                  self.poseEstimate.orientation.z,
+                                                  self.poseEstimate.orientation.w])
+
+        if yaw > np.pi:
+            yaw -= 2.0 * np.pi
+        elif yaw < -np.pi:
+            yaw += 2.0 * np.pi
+
+        return yaw
+
+    def _compute_speed_estimate(self, oldPoint, newPoint, deltaTime):
+        """ Compute the signed speed estimate given two positions and the time passed.
+
+            Parameters:
+                oldPoint    --  The old point as a Point object (x & y in meters).
+                newPoint    --  The new point as a Point object (x & y in meters).
+                deltaTime   --  The time difference between these two points (in seconds).
+
+            Returns:
+                The estimate of the speed.
+        """
+
+        a = Point(oldPoint.x, oldPoint.y, oldPoint.z)
+        c = Point(newPoint.x, newPoint.y, newPoint.z)
+
+        distanceTravelled = np.sqrt(pow(a.x - c.x, 2) + pow(a.y - c.y, 2))
+
+        #thetaOldToNew = np.arctan2(c.y - a.y, c.x - a.x)
+        heading = self.get_heading_estimate()
+        b = Point(a.x + np.cos(heading - np.pi / 2.0),
+                  a.y + np.sin(heading - np.pi / 2.0),
+                  a.z)
+
+        # Check if this new point (c) is left of the line formed by the old point (a) and a point
+        # right of it (b). If it is, then it is moving forward; otherwise, it is moving backwards.
+        isLeft = ((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x))
+
+        if isLeft >= 0.0:
+            return distanceTravelled / deltaTime
+        else:
+            return -distanceTravelled / deltaTime
 
     def sub_kobuki_odometry(self, msg):
         """ Update the odometry information.
@@ -94,6 +167,21 @@ class SLAM(object):
         if not self.started:
             rospy.logwarn("Warn[SLAM.sub_kobuki_odometry]: Initialization has not yet completed.")
             return
+
+        if self.lastUpdateTime is not None:
+            currentTime = rospy.get_rostime().to_sec()
+            deltaTime = currentTime - self.lastUpdateTime
+            self.lastUpdateTime = currentTime
+
+            # Compute the speed in meters per second, and only keep the last few speed estimates.
+            # Also, throw out any outliers, namely if we get a message too quickly. This is perhaps
+            # caused by two things publishing on the topic, or if a few things can cause a trigger.
+            if deltaTime > 0.01 and deltaTime < 1.0:
+                estimate = self._compute_speed_estimate(self.poseEstimate.position, msg.pose.pose.position, deltaTime)
+                self.speedEstimates += [estimate]
+                self.speedEstimates.pop(0)
+        else:
+            self.lastUpdateTime = rospy.get_rostime().to_sec()
 
         self.poseEstimate = msg.pose.pose
 
@@ -108,8 +196,8 @@ class SLAM(object):
             rospy.logwarn("Warn[SLAM.sub_depth_point_cloud]: Initialization has not yet completed.")
             return
 
-        # TODO: Take raw point cloud, find points at a height, populate a Laser whatever msg, publish on gmapping topic...
-        # Run gmapping in separate window. In rviz listen to the map topic. See how it does at mapping...
+        # TODO: Take raw point cloud, find points at a height, populate a Laser whatever msg, publish on map topic...
+        # Run mapping node in separate window. In rviz listen to the map topic. See how it does at mapping...
 
         #fakeLaserScan = LaserScan()
         #fakeLaserScan.header = msg.header

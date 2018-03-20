@@ -27,10 +27,11 @@ import rospy
 from std_msgs.msg import Empty
 from geometry_msgs.msg import Twist
 
+from slam import *
+from velocity import *
 from recovery import *
 from teleoperator import *
 from path_follower import *
-from slam import *
 from visualize import *
 
 
@@ -45,10 +46,11 @@ class Controller(object):
 
         self.timer = None
 
+        self.slam = SLAM()
+        self.velocity = Velocity()
         self.recovery = Recovery()
         self.teleoperator = Teleoperator()
         self.pathFollower = PathFollower()
-        self.slam = SLAM()
         self.visualize = Visualize()
 
         self.pubKobukiVelocity = None
@@ -63,21 +65,21 @@ class Controller(object):
 
         rospy.loginfo("Info[Controller.start]: Starting main controller.")
 
-        pubKobukiVelocityTopic = rospy.get_param(rospy.search_param('pub_kobuki_velocity'), "cmd_vel")
+        pubKobukiVelocityTopic = rospy.get_param("~pub_kobuki_velocity", "cmd_vel")
         self.pubKobukiVelocity = rospy.Publisher(pubKobukiVelocityTopic, Twist, queue_size=32)
 
-        pubKobukiResetOdometryTopic = rospy.get_param(rospy.search_param('pub_kobuki_reset_odometry'),
-                                                      "cmd_reset_odom")
+        pubKobukiResetOdometryTopic = rospy.get_param("~pub_kobuki_reset_odometry", "cmd_reset_odom")
         self.pubKobukiResetOdometry = rospy.Publisher(pubKobukiResetOdometryTopic, Empty, queue_size=32)
 
+        self.slam.start()
+        self.velocity.start()
         self.recovery.start()
         self.teleoperator.start()
         self.pathFollower.start()
-        self.slam.start()
         self.visualize.start()
 
-        updateRate = float(rospy.get_param(rospy.search_param('update_rate'), "0.1"))
-        self.timer = rospy.Timer(rospy.Duration(updateRate), self.update)
+        secondsPerUpdate = 1.0 / float(rospy.get_param("~update_rate", "10.0"))
+        self.timer = rospy.Timer(rospy.Duration(secondsPerUpdate), self.update)
 
         self.started = True
 
@@ -86,10 +88,11 @@ class Controller(object):
 
         rospy.loginfo("Info[Controller.reset]: Resetting main controller.")
 
+        self.slam.reset()
+        self.velocity.reset()
         self.recovery.reset()
         self.teleoperator.reset()
         self.pathFollower.reset()
-        self.slam.reset()
         self.visualize.reset()
 
         # Reset the robot's odometry.
@@ -117,14 +120,16 @@ class Controller(object):
         if self.resetRequired:
             self.reset()
 
-        if self.recovery.is_recovering():
-            self.recovery.perform_recovery()
+        print("UPDATE!")
+
+        if self.recovery.is_recovering(self.slam):
+            self.recovery.perform_recovery(self.slam, self.velocity)
 
         elif self.teleoperator.is_activated():
-            self.teleoperator.perform_teleoperation()
+            self.teleoperator.perform_teleoperation(self.slam, self.velocity)
 
         elif self.pathFollower.has_path(self.slam):
-            self.pathFollower.perform_path_following(self.slam)
+            self.pathFollower.perform_path_following(self.slam, self.velocity)
 
         self.visualize.publish_path(self.slam.get_pose_estimate())
 
