@@ -120,8 +120,6 @@ class Controller(object):
         if self.resetRequired:
             self.reset()
 
-        print("UPDATE!")
-
         if self.recovery.is_recovering(self.slam):
             self.recovery.perform_recovery(self.slam, self.velocity)
 

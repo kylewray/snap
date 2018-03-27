@@ -41,16 +41,16 @@ class Velocity(object):
         self.speedIntegral = 0.0
         self.speedDerivative = 0.0
 
-        self.speedProportionalGain = float(rospy.get_param("~speed_proportional_gain", "0.4"))
+        self.speedProportionalGain = float(rospy.get_param("~speed_proportional_gain", "0.5"))
         self.speedIntegralGain = float(rospy.get_param("~speed_integral_gain", "0.01"))
-        self.speedDerivativeGain = float(rospy.get_param("~speed_derivative_gain", "0.1"))
+        self.speedDerivativeGain = float(rospy.get_param("~speed_derivative_gain", "0.15"))
 
         self.headingProportional = 0.0
         self.headingIntegral = 0.0
         self.headingDerivative = 0.0
 
         self.headingProportionalGain = float(rospy.get_param("~heading_proportional_gain", "0.5"))
-        self.headingIntegralGain = float(rospy.get_param("~heading_integral_gain", "0.1"))
+        self.headingIntegralGain = float(rospy.get_param("~heading_integral_gain", "0.05"))
         self.headingDerivativeGain = float(rospy.get_param("~heading_derivative_gain", "0.3"))
 
         self.debugTuneGains = None # None, "speed", or "heading"
@@ -93,6 +93,7 @@ class Velocity(object):
         """
 
         if type(desiredSpeed) is not float:
+            rospy.logwarn("Warning[Velocity.compute_speed]: Desired speed is not a float!")
             desiredSpeed = slam.get_speed_estimate()
 
         if self.debugTuneGains == "speed":
@@ -104,7 +105,7 @@ class Velocity(object):
         self.speedDerivative = error - self.speedProportional
         self.speedProportional = error
 
-        integralDecay = 0.9
+        integralDecay = 0.95
         self.speedProportional = np.clip(self.speedProportional, -100.0, 100.0)
         self.speedIntegral = np.clip(self.speedIntegral * integralDecay, -100.0, 100.0)
         self.speedDerivative = np.clip(self.speedDerivative, -100.0, 100.0)
@@ -114,9 +115,10 @@ class Velocity(object):
                   + self.speedDerivativeGain * self.speedDerivative)
 
         if self.debugTuneGains == "speed":
-            rospy.loginfo("Speed: [ Proportional = %.3f - %.3f = %.3f  Integral = %.3f  Derivative: %.3f ]"
-                          % (desiredSpeed, slam.get_speed_estimate(), error,
-                             self.speedIntegral, self.speedDerivative))
+            rospy.loginfo("Info[Velocity.compute_speed]: %s"
+                          % ("Speed: [ Proportional = %.3f - %.3f = %.3f  Integral = %.3f  Derivative: %.3f ]"
+                             % (desiredSpeed, slam.get_speed_estimate(), error,
+                                self.speedIntegral, self.speedDerivative)))
         elif self.debugTuneGains == "heading":
             result = 0.4
 
@@ -134,6 +136,7 @@ class Velocity(object):
         """
 
         if type(desiredHeading) is not float:
+            rospy.logwarn("Warning[Velocity.compute_heading]: Desired heading is not a float!")
             desiredHeading = slam.get_heading_estimate()
 
         if self.debugTuneGains == "heading":
@@ -145,7 +148,7 @@ class Velocity(object):
         self.headingDerivative = error - self.headingProportional
         self.headingProportional = error
 
-        integralDecay = 0.9
+        integralDecay = 0.95
         self.headingProportional = np.clip(self.headingProportional, -100.0, 100.0)
         self.headingIntegral = np.clip(self.headingIntegral * integralDecay, -100.0, 100.0)
         self.headingDerivative = np.clip(self.headingDerivative, -100.0, 100.0)
@@ -157,9 +160,10 @@ class Velocity(object):
         if self.debugTuneGains == "speed":
             result = 0.0
         elif self.debugTuneGains == "heading":
-            rospy.loginfo("Heading: [ Proportional = %.3f - %.3f = %.3f  Integral = %.3f  Derivative: %.3f ]"
-                          % (desiredHeading, slam.get_heading_estimate(), error,
-                             self.headingIntegral, self.headingDerivative))
+            rospy.loginfo("Info[Velocity.compute_heading]: %s"
+                          % ("Heading: [ Proportional = %.3f - %.3f = %.3f  Integral = %.3f  Derivative: %.3f ]"
+                             % (desiredHeading, slam.get_heading_estimate(), error,
+                                self.headingIntegral, self.headingDerivative)))
 
         return result
 

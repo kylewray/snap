@@ -25,6 +25,7 @@
 import rospy
 
 from geometry_msgs.msg import Twist
+from geometry_msgs.msg import Pose
 from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import Odometry
 
@@ -44,12 +45,16 @@ class PathFollower(object):
 
         self.path = None
         self.lastComputePathUpdateTime = None
-        self.computePathSecondsPerUpdate = 1.0 / float(rospy.get_param("~compute_path_update_rate", "10.0"))
+        self.computePathSecondsPerUpdate = 1.0 / float(rospy.get_param("~compute_path_update_rate", "2.0"))
+
+        self.pathResolution = float(rospy.get_param("~path_resolution", 0.1))
+        self.minPathListSize = int(rospy.get_param("~min_path_list_size", "5"))
+        self.maxPathListSize = float(rospy.get_param("~max_path_list_size", 1000))
+
+        self.pathFollowTimeAhead = float(rospy.get_param("~path_follow_time_ahead", 3.0))
 
         self.maxPathFollowerSpeed = float(rospy.get_param("~max_path_follower_speed", "0.2"))
         self.maxPathFollowerHeading = float(rospy.get_param("~max_path_follower_heading", str(np.pi / 2.0)))
-
-        self.minValidPathListSize = int(rospy.get_param("~min_valid_path_list_size", "5"))
 
         self.srvEpicComputePathTopic = rospy.get_param("~srv_epic_compute_path", "epic_compute_path")
 
@@ -96,8 +101,7 @@ class PathFollower(object):
 
         if (self.lastComputePathUpdateTime is None 
                 or (self.lastComputePathUpdateTime + self.computePathSecondsPerUpdate <= currentTime)):
-
-            print("TIME TO COMPUTE A NEW PATH!")
+            self.lastComputePathUpdateTime = currentTime
 
             rospy.wait_for_service(self.srvEpicComputePathTopic)
             try:
@@ -108,8 +112,8 @@ class PathFollower(object):
                 poseStamped.header.stamp = rospy.get_rostime()
                 poseStamped.pose = slam.get_pose_estimate()
 
-                res = srvEpicComputePath(poseStamped, 0.1, 0.1, 1000)
-                if res is not None and len(res.path.poses) >= self.minValidPathListSize:
+                res = srvEpicComputePath(poseStamped, self.pathResolution, 0.1, self.maxPathListSize)
+                if res is not None and len(res.path.poses) >= self.minPathListSize:
                     self.path = res.path.poses
                 else:
                     raise rospy.ServiceException()
@@ -118,11 +122,28 @@ class PathFollower(object):
                 rospy.logwarn("Warning[PathFollower.has_path]: Failed to execute service call ComputePath in 'epic'.")
                 self.path = None
 
-            print("-> DONE COMPUTING A NEW PATH!")
-
-        self.lastComputePathUpdateTime = currentTime
-
         return self.path is not None
+
+
+    def _compute_closest_path_index(self, pose):
+        """ Compute the closest index along the path to the pose given.
+
+            Parameters:
+                pose    --  The PoseStamped object to test.
+
+            Returns:
+                The index along the path that is closest to this point, or None on an error.
+        """
+
+        if self.path is None or len(self.path) == 0 or type(pose) is not Pose:
+            print(type(self.path), len(self.path), type(pose))
+            return None
+
+        pathDistances = sorted([(index, pow(element.pose.position.x - pose.position.x, 2)
+                                        + pow(element.pose.position.y - pose.position.y, 2))
+                                for index, element in enumerate(self.path)], key=lambda z: z[1])
+
+        return pathDistances[0][0]
 
     def perform_path_following(self, slam, velocity):
         """ Perform path following control adjustments, sending Twist messages to the Kobuki.
@@ -133,14 +154,14 @@ class PathFollower(object):
         """
 
         # If there is no path or the path following is paused, then publish empty.
-        if self.path is None or slam is None or len(self.path) <= self.minValidPathListSize or self.paused:
+        if self.path is None or slam is None or len(self.path) <= self.minPathListSize or self.paused:
             control = Twist()
             self.pubKobukiVelocity.publish(control)
             return
 
         poseEstimate = slam.get_pose_estimate()
-        distanceToGoal = np.sqrt(pow(self.path[-1].pose.position.x - poseEstimate.position.x, 2)
-                                 + pow(self.path[-1].pose.position.y - poseEstimate.position.y, 2))
+        distanceToGoal = float(np.sqrt(pow(self.path[-1].pose.position.x - poseEstimate.position.x, 2)
+                                       + pow(self.path[-1].pose.position.y - poseEstimate.position.y, 2)))
 
         # Check if we reached the goal to within 0.1 meter. If so, then halt the path follower.
         if distanceToGoal < 0.1:
@@ -149,24 +170,28 @@ class PathFollower(object):
             return
 
         # Compute a pose that is 3 seconds away given the current speed.
-        print("SLAM Speed Estimate: %.5f" % (slam.get_speed_estimate()))
-        # TODO TODO TODO
+        closestPathIndex = self._compute_closest_path_index(poseEstimate)
+        currentSpeedEstimate = slam.get_speed_estimate()
+        distanceTravelled = 0.0
+        localGoalPathIndex = -1
+        for localGoalPathIndex in range(closestPathIndex + 1, len(self.path)):
+            newLocation = self.path[localGoalPathIndex].pose.position
+            oldLocation = self.path[localGoalPathIndex - 1].pose.position
+            distanceTravelled += float(np.sqrt(pow(newLocation.x - oldLocation.x, 2) + pow(newLocation.y - oldLocation.y, 2)))
+            if distanceTravelled / currentSpeedEstimate >= self.pathFollowTimeAhead:
+                break
 
-        # Change the speed to half speed near the goal. Also change the heading path location accordingly.
-        if distanceToGoal >= 1.0:
-            desiredSpeed = self.maxPathFollowerSpeed
-            desiredHeading = np.arctan2(self.path[-1].pose.position.y - poseEstimate.position.y,
-                                        self.path[-1].pose.position.x - poseEstimate.position.x)
-        else:
-            desiredSpeed = self.maxPathFollowerSpeed / 2.0
-            desiredHeading = np.arctan2(self.path[-1].pose.position.y - poseEstimate.position.y,
-                                        self.path[-1].pose.position.x - poseEstimate.position.x)
+        # Change the speed proportional to distance to the goal. Also change the heading path index
+        # selected proportional to the curvature of the path.
+        desiredSpeed = self.maxPathFollowerSpeed * min(1.0, distanceToGoal)
+        desiredHeading = float(np.arctan2(self.path[localGoalPathIndex].pose.position.y - poseEstimate.position.y,
+                                          self.path[localGoalPathIndex].pose.position.x - poseEstimate.position.x))
 
         # Construct and publish the twist message which combines both the speed
         # and the angular adjustment.
         control = Twist()
 
-        control.linear.x = velocity.compute_speed(slam, desiredSpeed)
+        control.linear.x = slam.get_speed_estimate() + velocity.compute_speed(slam, desiredSpeed)
         control.angular.z = velocity.compute_heading(slam, desiredHeading)
 
         self.pubKobukiVelocity.publish(control)
