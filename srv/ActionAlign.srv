@@ -1,0 +1,15 @@
+# This message describes aligning to face an object
+# (e.g., AR tag) at a particular distance.
+
+# Which object to face. This is the object UID published
+# by the 'vista' node.
+uint64 object_uid
+
+# The distance in meters from the object.
+float32 distance_from_object
+
+---
+
+# Respond with the current action being executed, if any.
+ActionType current_action
+

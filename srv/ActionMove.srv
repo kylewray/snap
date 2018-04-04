@@ -1,0 +1,23 @@
+# This message describes relative movement from the robot.
+
+# Rotation actions are performed first. Direction is in signed
+# radians [-pi, pi] relative to robot; examples are given.
+float32 STRAIGHT = 0.0
+float32 LEFT = 1.570796
+float32 RIGHT = -1.570796
+
+float32 heading
+
+# Distance actions are performed second. These actions are in
+# signed meters relative to the robot; examples are given.
+float32 NONE = 0.0
+float32 FORWARD = 1.0
+float32 BACKWARD = -1.0
+
+float32 distance
+
+---
+
+# Respond with the current action being executed, if any.
+ActionType current_action
+

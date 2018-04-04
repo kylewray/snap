@@ -1,0 +1,18 @@
+# This message describes the intentional pushing of
+# a button or object by moving forward.
+
+# How far in meters to push the object once it makes contact.
+float32 push_distance_after_contact
+
+# How far in meters to try pushing the object.
+float32 attempt_push_distance
+
+# If the robot should return to where it began after
+# it senses the object it pushed.
+bool return_to_start
+
+---
+
+# Respond with the current action being executed, if any.
+ActionType current_action
+

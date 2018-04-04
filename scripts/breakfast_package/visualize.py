@@ -26,7 +26,7 @@ import math
 
 import rospy
 
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, Pose
 from nav_msgs.msg import Path
 
 
@@ -68,32 +68,36 @@ class Visualize(object):
         self.rawPath = list()
         self.lastPathPublishTime = rospy.get_rostime()
 
-    def publish_path(self, pose):
+    def publish_path(self, localization):
         """ Record the path taken, but only at a certain rate.
 
             Parameters:
-                pose    --  The pose data (odom) to add to the path.
+                localization    --  The Localization object, which contains position and heading estimates.
         """
 
         if not self.started:
             rospy.logwarn("Warn[Visualize.publish_path]: Visualize has not yet been started.")
             return
 
+        if localization is None:
+            return
+
         currentTime = rospy.get_rostime()
 
         if self.lastPathPublishTime.to_sec() + self.publishRate <= currentTime.to_sec():
-            # Only consider adding the new pose if there is a large enough difference in location (>= 0.1 meters).
-            if pose is not None and (len(self.rawPath) == 0
-                    or (len(self.rawPath) > 0
-                        and math.sqrt(pow(self.rawPath[-1].pose.position.x - pose.position.x, 2)
-                                    + pow(self.rawPath[-1].pose.position.y - pose.position.y, 2)
-                                    + pow(self.rawPath[-1].pose.position.z - pose.position.z, 2)) >= 0.1)):
+            position = localization.get_position_estimate()
 
-                # Add to raw path with a timestamped pose from odometers.
+            if len(self.rawPath) > 0:
+                distanceTravelled = float(math.sqrt(pow(self.rawPath[-1].pose.position.x - position.x, 2)
+                                                    + pow(self.rawPath[-1].pose.position.y - position.y, 2)))
+
+            # Only consider adding the new pose if there is a large enough difference in location (>= 0.1 meters).
+            if len(self.rawPath) == 0 or distanceTravelled >= 0.1:
                 poseStamped = PoseStamped()
                 poseStamped.header.frame_id = self.subKobukiOdometryTopic
                 poseStamped.header.stamp = currentTime
-                poseStamped.pose = pose
+                poseStamped.pose = Pose()
+                poseStamped.pose.position = position
 
                 self.rawPath += [poseStamped]
 

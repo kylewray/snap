@@ -1,0 +1,11 @@
+# This message describes navigation by executing the
+# harmonic function path planner 'epic'.
+
+# Specify a vector of points to consider as goals.
+geometry_msgs/Point[] points
+
+---
+
+# Respond with the current action being executed, if any.
+ActionType current_action
+

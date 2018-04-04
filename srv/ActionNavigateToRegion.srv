@@ -1,0 +1,14 @@
+# This message describes movement in a region world, with
+# regions defined as convex polytopes that are overlayed
+# on the map. Navigation to a region (naively) attempts
+# to go to the center point using the 'epic' path planner.
+
+# The region to navigate to. This is the region UID defined
+# by the map region metadata.
+uint64 region_uid
+
+---
+
+# Respond with the current action being executed, if any.
+ActionType current_action
+

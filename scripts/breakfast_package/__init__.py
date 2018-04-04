@@ -2,7 +2,7 @@
 
 """ The MIT License (MIT)
 
-    Copyright (c) 2017 Kyle Hollins Wray, University of Massachusetts
+    Copyright (c) 2018 Kyle Hollins Wray, University of Massachusetts
 
     Permission is hereby granted, free of charge, to any person obtaining a copy of
     this software and associated documentation files (the "Software"), to deal in
@@ -22,6 +22,7 @@
     CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
-__all__ = ["controller", "recovery", "teleoperater", "path_follower", "slam", "visualize"]
+__all__ = ["controller", "slam", "velocity", "recovery", "teleoperater",
+           "simple_mover", "path_follower", "visualize"]
 
 

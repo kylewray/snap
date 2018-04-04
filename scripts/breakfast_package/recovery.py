@@ -25,9 +25,7 @@
 import rospy
 
 from geometry_msgs.msg import Twist
-from kobuki_msgs.msg import BumperEvent
-from kobuki_msgs.msg import CliffEvent
-from kobuki_msgs.msg import WheelDropEvent
+from kobuki_msgs.msg import BumperEvent, CliffEvent, WheelDropEvent
 
 import numpy as np
 
@@ -42,13 +40,15 @@ class Recovery(object):
         self.recovery = False
         self.recoveryStartTime = rospy.get_rostime()
         self.recoveryTotalDistance = 0.0
-        self.recoveryLastPoseEstimate = None
+        self.recoveryLastPositionEstimate = None
+
+        self.expectingBump = False
 
         self.wheelDrop = [False, False]
 
         self.maxRecoveryDuration = float(rospy.get_param("~max_recovery_duration", "1.0"))
         self.maxRecoveryDistance = float(rospy.get_param("~max_recovery_distance", "0.5"))
-        self.maxRecoverySpeed = float(rospy.get_param("~max_recovery_speed", "0.2"))
+        self.maxRecoverySpeed = float(rospy.get_param("~max_recovery_speed", "0.3"))
         self.maxRecoveryHeading = float(rospy.get_param("~max_recovery_heading", str(np.pi / 2.0)))
 
         self.subKobukiBumper = None
@@ -94,15 +94,26 @@ class Recovery(object):
         self.recovery = False
         self.recoveryStartTime = rospy.get_rostime()
         self.recoveryTotalDistance = 0.0
-        self.recoveryLastPoseEstimate = None
+        self.recoveryLastPositionEstimate = None
+
+        self.expectingBump = False
 
         self.wheelDrop = [False, False]
 
-    def is_recovering(self, slam):
+    def set_expecting_bump(self, expectingBump):
+        """ Set if a bump is expected or not.
+
+            Parameters:
+                expectingBump   --  If a bump is expected or not.
+        """
+
+        self.expectingBump = bool(expectingBump)
+
+    def is_recovering(self, localization):
         """ Check recovery, returning True if a recovery is necessary, and False if it is not.
 
             Parameters:
-                slam    --  The SLAM object, which contains pose estimates.
+                localization    --  The Localization object, which contains position and heading estimates.
 
             Returns:
                 True if a recovery is necessary, and False if it is not.
@@ -123,19 +134,17 @@ class Recovery(object):
             return False
 
         # If we have not run out of time yet, then we check the distance instead.
-        currentPoseEstimate = slam.get_pose_estimate()
+        positionEstimate = localization.get_position_estimate()
 
-        if self.recoveryLastPoseEstimate is not None:
-            self.recoveryTotalDistance += np.sqrt(pow(currentPoseEstimate.position.x
-                                                      - self.recoveryLastPoseEstimate.position.x, 2)
-                                                  + pow(currentPoseEstimate.position.y
-                                                        - self.recoveryLastPoseEstimate.position.y, 2))
+        if self.recoveryLastPositionEstimate is not None:
+            self.recoveryTotalDistance += np.sqrt(pow(positionEstimate.x - self.recoveryLastPositionEstimate.x, 2)
+                                                  + pow(positionEstimate.y - self.recoveryLastPositionEstimate.y, 2))
 
             if self.recoveryTotalDistance > self.maxRecoveryDistance:
                 self.recovery = False
                 return False
 
-        self.recoveryLastPoseEstimate = currentPoseEstimate
+        self.recoveryLastPositionEstimate = positionEstimate
 
         return True
 
@@ -148,11 +157,11 @@ class Recovery(object):
 
         return self.wheelDrop[0] or self.wheelDrop[1]
 
-    def perform_recovery(self, slam, velocity):
+    def perform_recovery(self, localization, velocity):
         """ Move away from a wall or cliff backwards using the relevant Kobuki messages.
 
             Parameters:
-                slam        --  The SLAM object, which contains pose estimates.
+                localization        --  The Localization object, which contains position and heading estimates.
                 velocity    --  The Velocity object, which is a speed/heading PID controller.
         """
 
@@ -168,7 +177,7 @@ class Recovery(object):
 
         # Otherwise, we perform a basic recovery by moving backwards for a short time.
         control = Twist()
-        control.linear.x = velocity.compute_speed(slam, -self.maxRecoverySpeed)
+        control.linear.x = velocity.compute_speed(localization, -self.maxRecoverySpeed)
 
         self.pubKobukiVelocity.publish(control)
 
@@ -179,14 +188,14 @@ class Recovery(object):
                 msg     --  The BumperEvent message data.
         """
 
-        if self.are_wheels_dropped():
+        if self.are_wheels_dropped() or self.expectingBump:
             return
 
         if msg.state == BumperEvent.PRESSED:
             self.recovery = True
             self.recoveryStartTime = rospy.get_rostime()
             self.recoveryTotalDistance = 0.0
-            self.recoveryLastPoseEstimate = None
+            self.recoveryLastPositionEstimate = None
 
     def sub_kobuki_cliff(self, msg):
         """ This method checks for sensing a cliff.
@@ -202,7 +211,7 @@ class Recovery(object):
             self.recovery = True
             self.recoveryStartTime = rospy.get_rostime()
             self.recoveryTotalDistance = 0.0
-            self.recoveryLastPoseEstimate = None
+            self.recoveryLastPositionEstimate = None
 
     def sub_kobuki_wheel_drop(self, msg):
         """ This method checks for sensing a wheel drop.

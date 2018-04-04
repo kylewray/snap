@@ -26,25 +26,28 @@ import rospy
 
 from tf.transformations import euler_from_quaternion
 
-from geometry_msgs.msg import Twist
-from geometry_msgs.msg import Point
+from geometry_msgs.msg import Twist, Point
 from nav_msgs.msg import Odometry
-from sensor_msgs.msg import PointCloud2
-from sensor_msgs.msg import LaserScan
+from sensor_msgs.msg import PointCloud2, LaserScan
 
 import numpy as np
 
 
-class SLAM(object):
-    """ A class for creating a map and localizing within it (SLAM). """
+class Localization(object):
+    """ A class for localizing within a known map with known regions and objects (e.g., AR tags). """
 
     def __init__(self):
-        """ The constructor for the SLAM class. """
+        """ The constructor for the Localization class. """
 
         self.started = False
 
         self.lastUpdateTime = None
-        self.poseEstimate = None
+        self.lastOdometryPositionEstimate = None
+        self.lastOdometryHeadingEstimate = None
+
+        self.positionEstimate = Point(0.0, 0.0, 0.0)
+        self.headingEstimate = 0.0
+
         self.maxSpeedEstimates = int(rospy.get_param("~max_speed_estimates", "20"))
         self.speedEstimates = [0.0 for i in range(self.maxSpeedEstimates)]
 
@@ -56,10 +59,10 @@ class SLAM(object):
         """ Start the necessary messages to create a map and localize. """
 
         if self.started:
-            rospy.logwarn("Warn[SLAM.start]: Already started.")
+            rospy.logwarn("Warn[Localization.start]: Already started.")
             return
 
-        rospy.loginfo("Info[SLAM.start]: Starting SLAM sub-controller.")
+        rospy.loginfo("Info[Localization.start]: Starting Localization sub-controller.")
 
         subKobukiOdometryTopic = rospy.get_param("~sub_kobuki_odometry", "odom")
         self.subKobukiOdometry = rospy.Subscriber(subKobukiOdometryTopic,
@@ -77,25 +80,30 @@ class SLAM(object):
         self.started = True
 
     def reset(self):
-        """ Reset the SLAM variables. """
+        """ Reset the Localization variables. """
 
-        rospy.loginfo("Info[SLAM.reset]: Resetting SLAM sub-controller.")
+        rospy.loginfo("Info[Localization.reset]: Resetting Localization sub-controller.")
 
         self.lastUpdateTime = None
-        self.poseEstimate = None
+        self.lastOdometryPositionEstimate = None
+        self.lastOdometryHeadingEstimate = None
+
+        self.positionEstimate = Point(0.0, 0.0, 0.0)
+        self.headingEstimate = 0.0
+
         self.speedEstimates = [0.0 for i in range(self.maxSpeedEstimates)]
 
-    def get_pose_estimate(self):
-        """ Return the current pose estimate (localization).
+    def get_position_estimate(self):
+        """ Get the current position estimate.
 
             Returns:
-                The current pose estimate as a Pose object.
+                The current position estimate as a Point object (x & y in meters).
         """
 
-        return self.poseEstimate
+        return Point(self.positionEstimate.x, self.positionEstimate.y, 0.0)
 
     def get_speed_estimate(self):
-        """ Get a speed estimate from the history of pose estimates (localization).
+        """ Get a speed estimate from the history of speed estimates.
 
             Returns:
                 The current speed estimate as a signed float.
@@ -113,15 +121,26 @@ class SLAM(object):
                 The current heading estimate as a float in radians on [-pi, pi].
         """
 
-        roll, pitch, yaw = euler_from_quaternion([self.poseEstimate.orientation.x,
-                                                  self.poseEstimate.orientation.y,
-                                                  self.poseEstimate.orientation.z,
-                                                  self.poseEstimate.orientation.w])
+        return float(self.headingEstimate)
 
+    def _compute_heading_estimate(self, poseEstimate):
+        """ Compute the heading estimate (in radians) from a pose estimate.
+
+            Parameters:
+                poseEstimate    --  The pose estimate as a Pose object.
+
+            Returns:
+                The estimate of the heading.
+        """
+
+        roll, pitch, yaw = euler_from_quaternion([poseEstimate.orientation.x,
+                                                  poseEstimate.orientation.y,
+                                                  poseEstimate.orientation.z,
+                                                  poseEstimate.orientation.w])
         if yaw > np.pi:
-            yaw -= 2.0 * np.pi
+            yaw -= 2.0 * float(np.pi)
         elif yaw < -np.pi:
-            yaw += 2.0 * np.pi
+            yaw += 2.0 * float(np.pi)
 
         return yaw
 
@@ -165,25 +184,39 @@ class SLAM(object):
         """
 
         if not self.started:
-            rospy.logwarn("Warn[SLAM.sub_kobuki_odometry]: Initialization has not yet completed.")
+            rospy.logwarn("Warn[Localization.sub_kobuki_odometry]: Initialization has not yet completed.")
             return
 
-        if self.lastUpdateTime is not None:
-            currentTime = rospy.get_rostime().to_sec()
-            deltaTime = currentTime - self.lastUpdateTime
-            self.lastUpdateTime = currentTime
-
-            # Compute the speed in meters per second, and only keep the last few speed estimates.
-            # Also, throw out any outliers, namely if we get a message too quickly. This is perhaps
-            # caused by two things publishing on the topic, or if a few things can cause a trigger.
-            if deltaTime > 0.01 and deltaTime < 1.0:
-                estimate = self._compute_speed_estimate(self.poseEstimate.position, msg.pose.pose.position, deltaTime)
-                self.speedEstimates += [estimate]
-                self.speedEstimates.pop(0)
-        else:
+        if self.lastUpdateTime is None or self.lastOdometryPositionEstimate is None:
             self.lastUpdateTime = rospy.get_rostime().to_sec()
+            self.lastOdometryPositionEstimate = msg.pose.pose.position
+            self.lastOdometryHeadingEstimate = self._compute_heading_estimate(msg.pose.pose)
+            return
 
-        self.poseEstimate = msg.pose.pose
+        currentTime = rospy.get_rostime().to_sec()
+        deltaTime = currentTime - self.lastUpdateTime
+        self.lastUpdateTime = currentTime
+
+        # Compute the speed in meters per second, and only keep the last few speed estimates.
+        # Also, throw out any outliers, namely if we get a message too quickly. This is perhaps
+        # caused by two things publishing on the topic, or if a few things can cause a trigger.
+        if deltaTime > 0.01 and deltaTime < 1.0:
+            estimate = self._compute_speed_estimate(self.positionEstimate, msg.pose.pose.position, deltaTime)
+            self.speedEstimates += [estimate]
+            self.speedEstimates.pop(0)
+
+        # Add to the position and heading based on the difference.
+        self.positionEstimate.x += msg.pose.pose.position.x - self.lastOdometryPositionEstimate.x
+        self.positionEstimate.y += msg.pose.pose.position.y - self.lastOdometryPositionEstimate.y
+
+        self.headingEstimate += self._compute_heading_estimate(msg.pose.pose) - self.lastOdometryHeadingEstimate
+        if self.headingEstimate > np.pi:
+            self.headingEstimate -= 2.0 * np.pi
+        elif self.headingEstimate < -np.pi:
+            self.headingEstimate += 2.0 * np.pi
+
+        self.lastOdometryPositionEstimate = msg.pose.pose.position
+        self.lastOdometryHeadingEstimate = self._compute_heading_estimate(msg.pose.pose)
 
     def sub_depth_point_cloud(self, msg):
         """ Update the raw depth point cloud information, including sub-sampling and extracting abstract data.
@@ -193,7 +226,7 @@ class SLAM(object):
         """
 
         if not self.started:
-            rospy.logwarn("Warn[SLAM.sub_depth_point_cloud]: Initialization has not yet completed.")
+            rospy.logwarn("Warn[Localization.sub_depth_point_cloud]: Initialization has not yet completed.")
             return
 
         # TODO: Take raw point cloud, find points at a height, populate a Laser whatever msg, publish on map topic...

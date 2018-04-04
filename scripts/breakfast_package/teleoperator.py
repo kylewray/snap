@@ -87,11 +87,11 @@ class Teleoperator(object):
 
         return self.activated
 
-    def perform_teleoperation(self, slam, velocity):
+    def perform_teleoperation(self, localization, velocity):
         """ Perform the teleoperation movement.
 
             Parameters:
-                slam        --  The SLAM object, which contains pose estimates.
+                localization        --  The Localization object, which contains position and heading estimates.
                 velocity    --  The Velocity object, which is a speed/heading PID controller.
         """
 
@@ -108,13 +108,13 @@ class Teleoperator(object):
             desiredSpeed = 0.0
 
         if abs(self.joyDesiredLateral) >= self.teleoperatorJoyDeadzone:
-            desiredHeading = slam.get_heading_estimate() + self.joyDesiredLateral * self.maxTeleoperatorHeading
+            desiredHeading = localization.get_heading_estimate() + self.joyDesiredLateral * self.maxTeleoperatorHeading
         else:
-            desiredHeading = slam.get_heading_estimate()
+            desiredHeading = localization.get_heading_estimate()
 
         control = Twist()
-        control.linear.x = slam.get_speed_estimate() + velocity.compute_speed(slam, desiredSpeed)
-        control.angular.z = velocity.compute_heading(slam, desiredHeading)
+        control.linear.x = localization.get_speed_estimate() + velocity.compute_speed(localization, desiredSpeed)
+        control.angular.z = velocity.compute_heading(localization, desiredHeading)
 
         self.pubKobukiVelocity.publish(control)
 
@@ -131,11 +131,12 @@ class Teleoperator(object):
             self.activatedTime = rospy.get_rostime()
 
             if self.activated:
-                print("Teleoperation activated.")
+                rospy.loginfo("Info[Teleoperator.sub_joy]: Teleoperation activated.")
             else:
-                print("Teleoperation deactivated.")
+                rospy.loginfo("Info[Teleoperator.sub_joy]: Teleoperation deactivated.")
 
         # The left axis stick controls longitudinal and lateral desired set point relative to the robot.
-        self.joyDesiredLongitudinal = msg.axes[1]
-        self.joyDesiredLateral = msg.axes[0]
+        if self.activated:
+            self.joyDesiredLongitudinal = msg.axes[1]
+            self.joyDesiredLateral = msg.axes[0]
 

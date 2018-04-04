@@ -81,11 +81,11 @@ class Velocity(object):
         self.headingIntegral = 0.0
         self.headingDerivative = 0.0
 
-    def compute_speed(self, slam, desiredSpeed):
+    def compute_speed(self, localization, desiredSpeed):
         """ Compute the speed from the PID controller. Update the PID as well.
 
             Parameters:
-                slam            --  The SLAM object, which contains pose estimates.
+                localization            --  The Localization object, which contains position and heading estimates.
                 desiredSpeed    --  The desired signed speed in meters per second.
 
             Returns:
@@ -94,12 +94,12 @@ class Velocity(object):
 
         if type(desiredSpeed) is not float:
             rospy.logwarn("Warning[Velocity.compute_speed]: Desired speed is not a float!")
-            desiredSpeed = slam.get_speed_estimate()
+            desiredSpeed = localization.get_speed_estimate()
 
         if self.debugTuneGains == "speed":
             desiredSpeed = 1.0
 
-        error = desiredSpeed - slam.get_speed_estimate()
+        error = desiredSpeed - localization.get_speed_estimate()
 
         self.speedIntegral += error
         self.speedDerivative = error - self.speedProportional
@@ -117,18 +117,18 @@ class Velocity(object):
         if self.debugTuneGains == "speed":
             rospy.loginfo("Info[Velocity.compute_speed]: %s"
                           % ("Speed: [ Proportional = %.3f - %.3f = %.3f  Integral = %.3f  Derivative: %.3f ]"
-                             % (desiredSpeed, slam.get_speed_estimate(), error,
+                             % (desiredSpeed, localization.get_speed_estimate(), error,
                                 self.speedIntegral, self.speedDerivative)))
         elif self.debugTuneGains == "heading":
             result = 0.4
 
         return result
 
-    def compute_heading(self, slam, desiredHeading):
+    def compute_heading(self, localization, desiredHeading):
         """ Get the heading from the PID controller. Update the PID as well.
 
             Parameters:
-                slam            --  The SLAM object, which contains pose estimates.
+                localization            --  The Localization object, which contains position and heading estimates.
                 desiredHeading  --  The desired heading in radians on [-pi, pi].
 
             Returns:
@@ -137,12 +137,17 @@ class Velocity(object):
 
         if type(desiredHeading) is not float:
             rospy.logwarn("Warning[Velocity.compute_heading]: Desired heading is not a float!")
-            desiredHeading = slam.get_heading_estimate()
+            desiredHeading = localization.get_heading_estimate()
 
         if self.debugTuneGains == "heading":
-            desiredHeading = np.pi / 2.0
+            desiredHeading = float(np.pi) / 2.0
 
-        error = desiredHeading - slam.get_heading_estimate()
+        error = desiredHeading - localization.get_heading_estimate()
+        if abs(error) > np.pi:
+            if error >= 0.0:
+                error = desiredHeading - (localization.get_heading_estimate() + float(np.pi) * 2.0)
+            elif error < 0.0:
+                error = (desiredHeading + float(np.pi) * 2.0) - localization.get_heading_estimate()
 
         self.headingIntegral += error
         self.headingDerivative = error - self.headingProportional
@@ -162,7 +167,7 @@ class Velocity(object):
         elif self.debugTuneGains == "heading":
             rospy.loginfo("Info[Velocity.compute_heading]: %s"
                           % ("Heading: [ Proportional = %.3f - %.3f = %.3f  Integral = %.3f  Derivative: %.3f ]"
-                             % (desiredHeading, slam.get_heading_estimate(), error,
+                             % (desiredHeading, localization.get_heading_estimate(), error,
                                 self.headingIntegral, self.headingDerivative)))
 
         return result

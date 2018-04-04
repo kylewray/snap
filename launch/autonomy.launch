@@ -3,7 +3,7 @@
 
   <node pkg="epic" type="epic_navigation_node" name="epic_navigation_node" output="screen">
     <param name="algorithm" value="harmonic" />
-    <param name="rviz_support" value="true" />
+    <param name="rviz_support" value="false" />
     <param name="steps_per_update" value="100" />
     <param name="update_rate" value="30" />
 
@@ -13,35 +13,33 @@
 
     <param name="srv_add_goals" value="add_goals" />
     <param name="srv_remove_goals" value="remove_goals" />
+    <param name="srv_get_cell" value="get_cell" />
     <param name="srv_set_cells" value="set_cells" />
+    <param name="srv_reset_free_cells" value="reset_free_cells" />
     <param name="srv_compute_path" value="compute_path" />
 
     <param name="pub_map_path" value="path" />
   </node>
 
   <node pkg="breakfast" type="breakfast_node" name="breakfast_node" output="screen">
-    <remap from="base_pose_ground_truth" to="odom" />                           <!-- nav_msgs -->
-    <remap from="evt_bump" to="mobile_base/events/bumper" />                    <!-- kobuki_msgs -->
-    <remap from="evt_cliff" to="mobile_base/events/cliff" />                    <!-- kobuki_msgs -->
-    <remap from="evt_wheel_drop" to="mobile_base/events/wheel_drop" />          <!-- kobuki_msgs -->
-    <remap from="cmd_vel" to="mobile_base/commands/velocity" />                 <!-- kobuki_msgs -->
-    <remap from="cmd_reset_odom" to="mobile_base/commands/reset_odometry" />    <!-- kobuki_msgs -->
-    <remap from="joy" to="joy" />                                               <!-- sensor_msgs -->
-    <remap from="depth_points" to="camera/depth/points" />                      <!-- sensor_msgs -->
-    <remap from="epic_compute_path" to="epic_navigation_node/compute_path" />   <!-- epic_msgs -->
+    <remap from="base_pose_ground_truth" to="odom" />                                   <!-- nav_msgs -->
+    <remap from="evt_bump" to="mobile_base/events/bumper" />                            <!-- kobuki_msgs -->
+    <remap from="evt_cliff" to="mobile_base/events/cliff" />                            <!-- kobuki_msgs -->
+    <remap from="evt_wheel_drop" to="mobile_base/events/wheel_drop" />                  <!-- kobuki_msgs -->
+    <remap from="cmd_vel" to="mobile_base/commands/velocity" />                         <!-- kobuki_msgs -->
+    <remap from="cmd_reset_odom" to="mobile_base/commands/reset_odometry" />            <!-- kobuki_msgs -->
+    <remap from="map" to="map" />                                                    <!-- map_msgs -->
+    <remap from="joy" to="joy" />                                                       <!-- sensor_msgs -->
+    <remap from="depth_points" to="camera/depth/points" />                              <!-- sensor_msgs -->
+    <remap from="epic_add_goals" to="epic_navigation_node/add_goals" />                 <!-- epic_msgs -->
+    <remap from="epic_remove_goals" to="epic_navigation_node/remove_goals" />           <!-- epic_msgs -->
+    <remap from="epic_reset_free_cells" to="epic_navigation_node/reset_free_cells" />   <!-- epic_msgs -->
+    <remap from="epic_compute_path" to="epic_navigation_node/compute_path" />           <!-- epic_msgs -->
 
     <param name="update_rate" value="10" />
 
-    <param name="max_recovery_speed" value="0.3" />
-    <param name="max_recovery_heading" value="1.57079632679" />
-    <param name="max_recovery_duration" value="1.0" />
-    <param name="max_recovery_distance" value="0.25" />
-
-    <param name="max_teleoperator_speed" value="0.3" />
-    <param name="max_teleoperator_heading" value="1.57079632679" />
-
-    <param name="max_path_follower_speed" value="0.3" />
-    <param name="max_path_follower_heading" value="1.57079632679" />
+    <param name="map_name" value="umass" />
+    <param name="map_directory" value="$(find breakfast)/maps" />
 
     <param name="sub_kobuki_odometry" value="odom" />
     <param name="sub_kobuki_bumper" value="evt_bump" />
@@ -51,11 +49,15 @@
     <param name="pub_kobuki_velocity" value="cmd_vel" />
     <param name="pub_kobuki_reset_odometry" value="cmd_reset_odom" />
 
+    <param name="sub_map" value="map" />
     <param name="sub_joy" value="joy" />
     <param name="sub_depth_point_cloud" value="depth_points" />
 
     <param name="pub_laser_scan" value="scan" />
 
+    <param name="srv_epic_add_goals" value="epic_add_goals" />
+    <param name="srv_epic_remove_goals" value="epic_remove_goals" />
+    <param name="srv_epic_reset_free_cells" value="epic_reset_free_cells" />
     <param name="srv_epic_compute_path" value="epic_compute_path" />
 
     <param name="pub_path" value="path" />
