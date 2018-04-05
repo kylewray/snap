@@ -49,11 +49,11 @@ class Controller(object):
         """ The constructor for the Controller class. """
 
         self.started = False
-        self.resetRequired = False
 
         self.timer = None
 
         self.currentAction = ActionType.NONE
+        self.subactionQueue = list()
 
         self.localization = Localization()
         self.velocity = Velocity()
@@ -133,6 +133,7 @@ class Controller(object):
         rospy.loginfo("Info[Controller.reset]: Resetting main controller.")
 
         self.currentAction = ActionType.NONE
+        self.subactionQueue = list()
 
         self.localization.reset()
         self.velocity.reset()
@@ -152,8 +153,6 @@ class Controller(object):
             control = Twist()
             self.pubKobukiVelocity.publish(control)
 
-        self.resetRequired = False
-
     def update(self, msg):
         """ Perform an update at the rate of the timer.
 
@@ -165,45 +164,61 @@ class Controller(object):
             rospy.logwarn("Warn[Controller.update]: Initialization has not yet completed.")
             return
 
-        if self.resetRequired:
-            self.reset()
-
         if self.recovery.is_recovering(self.localization):
             self.recovery.perform_recovery(self.localization, self.velocity)
 
-            if self.simpleMover.has_goal():
-                self.simpleMover.reset()
-            if self.pathFollower.has_path():
-                self.pathFollower.reset()
-            self.currentAction = ActionType.NONE
+            self.currentAction = ActionType.RECOVERY
+            self.subactionQueue = [{"type": "reset"}]
 
         elif self.teleoperator.is_activated():
             self.teleoperator.perform_teleoperation(self.localization, self.velocity)
 
-            if self.simpleMover.has_goal():
-                self.simpleMover.reset()
-            if self.pathFollower.has_path():
-                self.pathFollower.reset()
-            self.currentAction = ActionType.NONE
+            self.currentAction = ActionType.TELEOPERATOR
+            self.subactionQueue = [{"type": "reset"}]
 
-        elif self.currentAction in [ActionType.MOVE, ActionType.MOVE_IN_GRID, ActionType.PUSH]:
-            if self.simpleMover.has_goal():
-                self.simpleMover.perform_simple_moving(self.localization, self.velocity)
+        elif len(self.subactionQueue) > 0:
+            subaction = self.subactionQueue[0]
 
-                if self.simpleMover.at_goal():
-                    self.recovery.set_expecting_bump(False)
+            if subaction['type'] == "reset":
+                if self.simpleMover.has_goal():
                     self.simpleMover.reset()
-                    self.currentAction = ActionType.NONE
-
-        elif self.currentAction in [ActionType.NAVIGATE, ActionType.NAVIGATE_TO_REGION, ActionType.ALIGN]:
-            if self.pathFollower.has_goal():
-                self.pathFollower.perform_path_following(self.localization, self.velocity)
-
-                if self.pathFollower.at_goal():
+                if self.pathFollower.has_path():
                     self.pathFollower.reset()
-                    self.currentAction = ActionType.NONE
+                self.currentAction = ActionType.NONE
+                self.subactionQueue.pop(0)
 
-        self.visualize.publish_path(self.localization)
+            elif subaction['type'] == "set":
+                if subaction['param'] == "expecting bump":
+                    self.recovery.set_expecting_bump(subaction['value'])
+                self.subactionQueue.pop(0)
+
+            elif subaction['type'] == "simple mover":
+                if self.simpleMover.has_goal():
+                    self.simpleMover.perform_simple_moving(self.localization, self.velocity)
+
+                    if self.simpleMover.at_goal():
+                        self.simpleMover.reset()
+                        self.currentAction = ActionType.NONE
+                        self.subactionQueue.pop(0)
+                else:
+                    if subaction['relative']:
+                        self.simpleMover.set_goal_relative_heading(self.localization, subaction['heading'])
+                    else:
+                        self.simpleMover.set_goal_absolute_heading(self.localization, subaction['heading'])
+                    self.simpleMover.set_goal_relative_distance(self.localization, subaction['distance'])
+
+            elif subaction['type'] == "path follower":
+                if self.pathFollower.has_goal():
+                    self.pathFollower.perform_path_following(self.localization, self.velocity)
+
+                    if self.pathFollower.at_goal():
+                        self.pathFollower.reset()
+                        self.currentAction = ActionType.NONE
+                        self.subactionQueue.pop(0)
+                else:
+                    self.pathFollower.set_goals(subaction['goals'])
+
+        self.visualize.publish_pose_estimate_history(self.localization)
 
     def srv_action_move(self, request):
         """ Handle a service request for the move action.
@@ -218,11 +233,9 @@ class Controller(object):
         if self.currentAction is not ActionType.NONE:
             return ActionMoveResponse(self.currentAction)
 
-        self.simpleMover.set_goal_relative_heading(self.localization, request.heading)
-        self.simpleMover.set_goal_relative_distance(self.localization, request.distance)
+        self.subactionQueue += [{'type': "simple mover", 'heading': request.heading, 'relative': True, 'distance': request.distance}]
 
         self.currentAction = ActionType.MOVE
-
         return ActionMoveResponse(ActionType.NONE)
 
     def srv_action_move_in_grid(self, request):
@@ -238,30 +251,29 @@ class Controller(object):
         if self.currentAction is not ActionType.NONE:
             return ActionMoveResponse(self.currentAction)
 
-        adjust = -self.localization.get_heading_estimate()
+        desiredHeading = 0.0
         pi = float(np.pi)
 
         if request.action == ActionMoveInGridRequest.NORTH:
-            self.simpleMover.set_goal_relative_heading(self.localization, adjust + pi / 2.0)
+            desiredHeading = pi / 2.0
         elif request.action == ActionMoveInGridRequest.SOUTH:
-            self.simpleMover.set_goal_relative_heading(self.localization, adjust - pi / 2.0)
+            desiredHeading = -pi / 2.0
         elif request.action == ActionMoveInGridRequest.EAST:
-            self.simpleMover.set_goal_relative_heading(self.localization, adjust + 0.0)
+            desiredHeading = 0.0
         elif request.action == ActionMoveInGridRequest.WEST:
-            self.simpleMover.set_goal_relative_heading(self.localization, adjust + pi)
+            desiredHeading = pi
         elif request.action == ActionMoveInGridRequest.NORTH_EAST:
-            self.simpleMover.set_goal_relative_heading(self.localization, adjust + pi / 4.0)
+            desiredHeading = pi / 4.0
         elif request.action == ActionMoveInGridRequest.NORTH_WEST:
-            self.simpleMover.set_goal_relative_heading(self.localization, adjust + pi * 3.0 / 4.0)
+            desiredHeading = pi * 3.0 / 4.0
         elif request.action == ActionMoveInGridRequest.SOUTH_EAST:
-            self.simpleMover.set_goal_relative_heading(self.localization, adjust - pi / 4.0)
+            desiredHeading = -pi / 4.0
         elif request.action == ActionMoveInGridRequest.SOUTH_WEST:
-            self.simpleMover.set_goal_relative_heading(self.localization, adjust - pi * 3.0 / 4.0)
+            desiredHeading = -pi * 3.0 / 4.0
 
-        self.simpleMover.set_goal_relative_distance(self.localization, request.grid_cell_size)
+        self.subactionQueue += [{'type': "simple mover", 'heading': desiredHeading, 'relative': False, 'distance': request.grid_cell_size}]
 
         self.currentAction = ActionType.MOVE
-
         return ActionMoveResponse(ActionType.NONE)
 
     def srv_action_navigate(self, request):
@@ -277,11 +289,10 @@ class Controller(object):
         if self.currentAction is not ActionType.NONE:
             return ActionMoveResponse(self.currentAction)
 
-        self.pathFollower.set_goals([Point(3.0, 2.0, 0.0)])
-        #self.pathFollower.set_goals(request.points)  # TODO TODO TODO TODO TODO UNCOMMENT AFTER WORKING
+        self.subactionQueue += [{'type': "path follower", 'goals': [Point(3.0, 2.0, 0.0)]}]
+        #self.subactionQueue += [{'type': "path follower", 'goals': request.points}]
 
         self.currentAction = ActionType.NAVIGATE
-
         return ActionMoveResponse(ActionType.NONE)
 
     def srv_action_navigate_to_region(self, request):
@@ -298,17 +309,13 @@ class Controller(object):
             return ActionMoveResponse(self.currentAction)
 
         # Assign goals to be 42 random locations within the region. TODO: Refine this behavior.
-        goals = list()
-        for i in range(42):
-            goals += [self.cartographer.get_random_point_in_region(request.region_uid)]
-
+        goals = [self.cartographer.get_random_point_in_region(request.region_uid) for i in range(42)]
         if None in goals:
             return ActionMoveResponse(self.currentAction)
 
-        self.pathFollower.set_goals(goals)
+        self.subactionQueue += [{'type': "path follower", 'goals': goals}]
 
         self.currentAction = ActionType.NAVIGATE
-
         return ActionMoveResponse(ActionType.NONE)
 
     def srv_action_push(self, request):
@@ -321,7 +328,17 @@ class Controller(object):
                 The ActionPushResponse object.
         """
 
-        pass
+        if self.currentAction is not ActionType.NONE:
+            return ActionMoveResponse(self.currentAction)
+
+        self.subactionQueue += [{'type': "set", 'param': "expecting bump", 'value': True},
+                                {'type': "simple mover", 'heading': 0.0, 'relative': True, 'distance': request.lead_in_distance_before_contact},
+                                {'type': "simple mover", 'heading': 0.0, 'relative': True, 'distance': request.push_distance},
+                                {'type': "set", 'param': "expecting bump", 'value': False},
+                                {'type': "simple mover", 'heading': 0.0, 'relative': True, 'distance': -request.recover_distance_after_push}]
+
+        self.currentAction = ActionType.PUSH
+        return ActionMoveResponse(ActionType.NONE)
 
     def srv_action_align(self, request):
         """ Handle a service request for the align action.
@@ -333,5 +350,24 @@ class Controller(object):
                 The ActionAlignResponse object.
         """
 
-        pass
+        if self.currentAction is not ActionType.NONE:
+            return ActionMoveResponse(self.currentAction)
+
+        objectHeading = self.cartographer.get_object_heading(request.object_uid)
+        if objectHeading is None:
+            return ActionMoveResponse(self.currentAction)
+
+        goalHeading = objectHeading + float(np.pi)
+        if goalHeading > np.pi:
+            goalHeading -= 2.0 * float(np.pi)
+
+        goalPosition = self.cartographer.get_object_position(request.object_uid)
+        goalPosition.x += float(request.distance_from_object * np.cos(objectHeading))
+        goalPosition.y += float(request.distance_from_object * np.sin(objectHeading))
+
+        self.subactionQueue += [{'type': "path follower", 'goals': [goalPosition]},
+                                {'type': "simple mover", 'heading': goalHeading, 'relative': False, 'distance': 0.0}]
+
+        self.currentAction = ActionType.ALIGN
+        return ActionMoveResponse(ActionType.NONE)
 

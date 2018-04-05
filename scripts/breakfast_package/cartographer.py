@@ -27,6 +27,7 @@ import rospy
 from geometry_msgs.msg import Point
 
 import random as rnd
+import numpy as np
 
 import json
 import os.path
@@ -159,4 +160,46 @@ class Cartographer(object):
                 return region
 
         return None
+
+    def get_object(self, objectUID):
+        """ Get the object from the object UID.
+
+            Parameters:
+                objectUID   --  The object UID to get.
+
+            Returns:
+                The object corresponding to the UID, or None otherwise.
+        """
+
+        for obj in self.objects:
+            if obj['uid'] == objectUID:
+                return obj
+
+        return None
+
+    def get_object_position(self, objectUID):
+        """ Get the object position of the object UID given.
+
+            Returns:
+                The object position as a Point object, or None if the input is invalid.
+        """
+
+        obj = self.get_object(objectUID)
+        if obj is not None:
+            return Point(obj['position'][0], obj['position'][1], 0.0)
+
+        return None
+
+    def get_object_heading(self, objectUID):
+        """ Get the object heading of the object UID given.
+
+            Returns:
+                The object heading in [-pi, pi], or None if the input is invalid.
+        """
+
+        obj = self.get_object(objectUID)
+        if obj is None:
+            return None
+
+        return float(np.clip(obj['heading'], -np.pi, np.pi))
 

@@ -76,6 +76,22 @@ class SimpleMover(object):
         self.goalHeading = None
         self.goalDistance = None
 
+    def set_goal_absolute_heading(self, localization, desiredAbsoluteHeading):
+        """ Set the desired absolute heading. This causes the simple move to begin moving.
+
+            Parameters:
+                localization            --  The Localization object, which contains position and heading estimates.
+                desiredAbsoluteHeading  --  The desired absolute heading in radians on [-pi, pi].
+        """
+
+        desiredRelativeHeading = desiredAbsoluteHeading - localization.get_heading_estimate()
+        if desiredRelativeHeading > np.pi:
+            desiredRelativeHeading -= 2.0 * float(np.pi)
+        elif desiredRelativeHeading < -np.pi:
+            desiredRelativeHeading += 2.0 * float(np.pi)
+
+        self.set_goal_relative_heading(localization, desiredRelativeHeading)
+
     def set_goal_relative_heading(self, localization, desiredRelativeHeading):
         """ Set the desired relative heading. This causes the simple mover to begin moving.
 

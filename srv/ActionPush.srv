@@ -1,15 +1,16 @@
 # This message describes the intentional pushing of
 # a button or object by moving forward.
 
-# How far in meters to push the object once it makes contact.
-float32 push_distance_after_contact
+# How far in meters to lead-in before contact and before pushing the object.
+float32 lead_in_distance_before_contact
 
-# How far in meters to try pushing the object.
-float32 attempt_push_distance
+# How far in meters to push the object once it makes contact. If contact with
+# the object did not (yet) occur, then it still traverses this distance.
+float32 push_distance
 
-# If the robot should return to where it began after
-# it senses the object it pushed.
-bool return_to_start
+# How far in meters to move backwards after it completes a push. This happens
+# regardless if contact occurred or not; it is simply after both moves above.
+float32 recover_distance_after_push
 
 ---
 

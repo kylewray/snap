@@ -2,21 +2,21 @@
     "regions": [
         {
             "uid": 0,
-            "name": "Start",
+            "name": "Start Area",
             "bounds": [[-1.25, 2.0], [1.45, 2.0], [1.45, -1.3], [-1.25, -1.3]],
-            "object_uids": []
+            "object_uids": [0, 1]
         },
         {
             "uid": 1,
             "name": "Experiment Area",
             "bounds": [[3.5, 6.5], [9.0, 6.5], [9.0, 0.5], [3.5, 0.5]],
-            "object_uids": []
+            "object_uids": [2, 3]
         }
     ],
     "connections": [
         {
             "uid": 0,
-            "name": "Start to Experiment Area",
+            "name": "Start Area to Experiment Area",
             "region_uids": [0, 1],
             "weight": 1.0
         }
@@ -24,10 +24,38 @@
     "objects": [
         {
             "uid": 0,
-            "name": "Test AR Tag",
+            "name": "Start Area AR Tag #1",
             "tag_uid": 0,
-            "location": [1.5, 0.0],
-            "heading": 3.141596
+            "position": [1.5, 0.0],
+            "heading": 3.14159265359
+        },
+        {
+            "uid": 1,
+            "name": "Start Area AR Tag #2",
+            "tag_uid": 0,
+            "position": [0.5, 2.0],
+            "heading": -1.57079632679
+        },
+        {
+            "uid": 2,
+            "name": "Experiment Area AR Tag #1",
+            "tag_uid": 0,
+            "position": [3.6, 3.6],
+            "heading": 0.0
+        },
+        {
+            "uid": 3,
+            "name": "Experiment Area AR Tag #2",
+            "tag_uid": 0,
+            "position": [9.1, 6.6],
+            "heading": -2.35619449019
+        },
+        {
+            "uid": 4,
+            "name": "Unknown Area AR Tag #1",
+            "tag_uid": 0,
+            "position": [15.5, 1.75],
+            "heading": -1.57079632679
         }
     ]
 }

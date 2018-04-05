@@ -38,7 +38,7 @@ class Visualize(object):
 
         self.started = False
 
-        self.rawPath = list()
+        self.poseEstimateHistory = list()
         self.lastPathPublishTime = rospy.get_rostime()
 
         self.publishRate = float(rospy.get_param("~pub_path_rate", "0.2"))
@@ -65,10 +65,10 @@ class Visualize(object):
 
         rospy.loginfo("Info[Visualize.reset]: Resetting visualize sub-controller.")
 
-        self.rawPath = list()
+        self.poseEstimateHistory = list()
         self.lastPathPublishTime = rospy.get_rostime()
 
-    def publish_path(self, localization):
+    def publish_pose_estimate_history(self, localization):
         """ Record the path taken, but only at a certain rate.
 
             Parameters:
@@ -87,27 +87,41 @@ class Visualize(object):
         if self.lastPathPublishTime.to_sec() + self.publishRate <= currentTime.to_sec():
             position = localization.get_position_estimate()
 
-            if len(self.rawPath) > 0:
-                distanceTravelled = float(math.sqrt(pow(self.rawPath[-1].pose.position.x - position.x, 2)
-                                                    + pow(self.rawPath[-1].pose.position.y - position.y, 2)))
+            if len(self.poseEstimateHistory) > 0:
+                distanceTravelled = float(math.sqrt(pow(self.poseEstimateHistory[-1].pose.position.x - position.x, 2)
+                                                    + pow(self.poseEstimateHistory[-1].pose.position.y - position.y, 2)))
 
             # Only consider adding the new pose if there is a large enough difference in location (>= 0.1 meters).
-            if len(self.rawPath) == 0 or distanceTravelled >= 0.1:
+            if len(self.poseEstimateHistory) == 0 or distanceTravelled >= 0.1:
                 poseStamped = PoseStamped()
                 poseStamped.header.frame_id = self.subKobukiOdometryTopic
                 poseStamped.header.stamp = currentTime
                 poseStamped.pose = Pose()
                 poseStamped.pose.position = position
 
-                self.rawPath += [poseStamped]
+                self.poseEstimateHistory += [poseStamped]
 
             # Create and publish the path.
             path = Path()
             path.header.frame_id = self.subKobukiOdometryTopic
             path.header.stamp = currentTime
-            path.poses = self.rawPath
+            path.poses = self.poseEstimateHistory
 
             self.pubPath.publish(path)
 
             self.lastPathPublishTime = currentTime
+
+    def publish_objects(self, cartographer):
+        """ Publish the object locations in the map.
+
+            Parameters:
+                cartographer    --  The Cartographer object that contains map object data.
+        """
+
+        #objects = list()
+
+        # TODO...
+        pass
+
+        #self.pubObjects.publish(objects)
 
