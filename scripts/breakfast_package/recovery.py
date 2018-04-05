@@ -2,7 +2,7 @@
 
 """ The MIT License (MIT)
 
-    Copyright (c) 2017 Kyle Hollins Wray, University of Massachusetts
+    Copyright (c) 2018 Kyle Hollins Wray, University of Massachusetts
 
     Permission is hereby granted, free of charge, to any person obtaining a copy of
     this software and associated documentation files (the "Software"), to deal in
@@ -66,6 +66,9 @@ class Recovery(object):
 
         rospy.loginfo("Info[Recovery.start]: Starting recovery sub-controller.")
 
+        pubKobukiVelocityTopic = rospy.get_param("~pub_kobuki_velocity", "cmd_vel")
+        self.pubKobukiVelocity = rospy.Publisher(pubKobukiVelocityTopic, Twist, queue_size=32)
+
         subKobukiBumperTopic = rospy.get_param("~sub_kobuki_bumper", "evt_bump")
         self.subKobukiBumper = rospy.Subscriber(subKobukiBumperTopic,
                                                 BumperEvent,
@@ -80,9 +83,6 @@ class Recovery(object):
         self.subKobukiWheelDrop = rospy.Subscriber(subKobukiWheelDropTopic,
                                                    WheelDropEvent,
                                                    self.sub_kobuki_wheel_drop)
-
-        pubKobukiVelocityTopic = rospy.get_param("~pub_kobuki_velocity", "cmd_vel")
-        self.pubKobukiVelocity = rospy.Publisher(pubKobukiVelocityTopic, Twist, queue_size=32)
 
         self.started = True
 

@@ -10,5 +10,6 @@ uint64 region_uid
 ---
 
 # Respond with the current action being executed, if any.
-ActionType current_action
+# This must be from the types listed in the ActionType message.
+uint8 current_action
 

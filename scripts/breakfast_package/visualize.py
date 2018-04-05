@@ -2,7 +2,7 @@
 
 """ The MIT License (MIT)
 
-    Copyright (c) 2017 Kyle Hollins Wray, University of Massachusetts
+    Copyright (c) 2018 Kyle Hollins Wray, University of Massachusetts
 
     Permission is hereby granted, free of charge, to any person obtaining a copy of
     this software and associated documentation files (the "Software"), to deal in
@@ -45,6 +45,8 @@ class Visualize(object):
         self.subKobukiOdometryTopic = rospy.get_param("~sub_kobuki_odometry", "odom")
 
         self.pubPath = None
+        self.pubRegions = None
+        self.pubObjects = None
 
     def start(self):
         """ Start the necessary messages for visualization. """
@@ -57,6 +59,12 @@ class Visualize(object):
 
         pubPathTopic = rospy.get_param("~pub_path", "path")
         self.pubPath = rospy.Publisher(pubPathTopic, Path, queue_size=32)
+
+        pubRegionsTopic = rospy.get_param("~pub_regions", "regions")
+        self.pubRegions = rospy.Publisher(pubRegionsTopic, ..., queue_size=32)
+
+        pubObjectsTopic = rospy.get_param("~pub_objects", "objects")
+        self.pubObjects = rospy.Publisher(pubObjectsTopic, ..., queue_size=32)
 
         self.started = True
 
@@ -110,6 +118,21 @@ class Visualize(object):
             self.pubPath.publish(path)
 
             self.lastPathPublishTime = currentTime
+
+    def publish_regions(self, cartographer):
+        """ Publish the region locations in the map.
+
+            Parameters:
+                cartographer    --  The Cartographer object that contains map object data.
+        """
+
+        #regions = list()
+
+        # TODO...
+        pass
+
+        #self.pubRegions.publish(regions)
+
 
     def publish_objects(self, cartographer):
         """ Publish the object locations in the map.

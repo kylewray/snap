@@ -22,5 +22,6 @@ float32 grid_cell_size
 ---
 
 # Respond with the current action being executed, if any.
-ActionType current_action
+# This must be from the types listed in the ActionType message.
+uint8 current_action
 

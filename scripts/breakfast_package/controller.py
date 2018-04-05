@@ -28,6 +28,7 @@ import random as rnd
 
 from std_msgs.msg import Empty
 from geometry_msgs.msg import Twist, Point
+from kobuki_msgs.msg import BumperEvent
 
 from breakfast.srv import *
 from breakfast.msg import *
@@ -53,7 +54,10 @@ class Controller(object):
         self.timer = None
 
         self.currentAction = ActionType.NONE
+        self.observationActionCompleteResult = ObservationActionComplete.NONE
         self.subactionQueue = list()
+
+        self.detectedObjects = list()
 
         self.localization = Localization()
         self.velocity = Velocity()
@@ -64,8 +68,15 @@ class Controller(object):
         self.pathFollower = PathFollower()
         self.visualize = Visualize()
 
+        self.subKobukiBumper = None
+
         self.pubKobukiVelocity = None
         self.pubKobukiResetOdometry = None
+
+        self.pubObservationActionComplete = None
+        self.pubObservationObjectDetection = None
+        self.pubObservationRecovery = None
+        self.pubObservationTeleoperator = None
 
     def start(self):
         """ Start the necessary messages to operate the Kobuki. """
@@ -82,6 +93,14 @@ class Controller(object):
         pubKobukiResetOdometryTopic = rospy.get_param("~pub_kobuki_reset_odometry", "cmd_reset_odom")
         self.pubKobukiResetOdometry = rospy.Publisher(pubKobukiResetOdometryTopic, Empty, queue_size=32)
 
+        pubObservationActionCompleteTopic = rospy.get_param("~pub_obs_action_complete", "obs_action_complete")
+        self.pubObservationActionComplete = rospy.Publisher(pubObservationActionCompleteTopic,
+                                                            ObservationActionComplete, queue_size=32)
+
+        pubObservationDetectedObjectsTopic = rospy.get_param("~pub_obs_detected_objects", "obs_detected_objects")
+        self.pubObservationDetectedObjects = rospy.Publisher(pubObservationDetectedObjectsTopic,
+                                                             ObservationDetectedObjects, queue_size=32)
+
         self.localization.start()
         self.velocity.start()
         self.cartographer.start()
@@ -91,8 +110,10 @@ class Controller(object):
         self.pathFollower.start()
         self.visualize.start()
 
-        secondsPerUpdate = 1.0 / float(rospy.get_param("~update_rate", "10.0"))
-        self.timer = rospy.Timer(rospy.Duration(secondsPerUpdate), self.update)
+        subKobukiBumperTopic = rospy.get_param("~sub_kobuki_bumper", "evt_bump")
+        self.subKobukiBumper = rospy.Subscriber(subKobukiBumperTopic,
+                                                BumperEvent,
+                                                self.sub_kobuki_bumper)
 
         srvActionMoveTopic = rospy.get_param("~action_move_topic", "~action_move")
         self.srvActionMove = rospy.Service(srvActionMoveTopic,
@@ -125,6 +146,9 @@ class Controller(object):
                                            ActionAlign,
                                            self.srv_action_align)
 
+        secondsPerUpdate = 1.0 / float(rospy.get_param("~update_rate", "10.0"))
+        self.timer = rospy.Timer(rospy.Duration(secondsPerUpdate), self.update)
+
         self.started = True
 
     def reset(self):
@@ -133,7 +157,10 @@ class Controller(object):
         rospy.loginfo("Info[Controller.reset]: Resetting main controller.")
 
         self.currentAction = ActionType.NONE
+        self.observationActionCompleteResult = ObservationActionComplete.NONE
         self.subactionQueue = list()
+
+        self.detectedObjects = list()
 
         self.localization.reset()
         self.velocity.reset()
@@ -164,18 +191,33 @@ class Controller(object):
             rospy.logwarn("Warn[Controller.update]: Initialization has not yet completed.")
             return
 
+        startingAction = self.currentAction
+
+        # Before anything, save the robot! Check if it needs to recover safely.
         if self.recovery.is_recovering(self.localization):
             self.recovery.perform_recovery(self.localization, self.velocity)
 
-            self.currentAction = ActionType.RECOVERY
-            self.subactionQueue = [{"type": "reset"}]
+            if self.currentAction != ActionType.RECOVERY:
+                self.currentAction = ActionType.RECOVERY
+                if startingAction != ActionType.NONE:
+                    self.observationActionCompleteResult = ObservationActionComplete.INTERRUPT
+                else:
+                    self.observationActionCompleteResult = ObservationActionComplete.SUCCESS
+                self.subactionQueue = [{"type": "reset"}]
 
+        # Also, if not recovering, check if a teleoperator is trying to control the robot.
         elif self.teleoperator.is_activated():
             self.teleoperator.perform_teleoperation(self.localization, self.velocity)
 
-            self.currentAction = ActionType.TELEOPERATOR
-            self.subactionQueue = [{"type": "reset"}]
+            if self.currentAction != ActionType.TELEOPERATOR:
+                self.currentAction = ActionType.TELEOPERATOR
+                if startingAction != ActionType.NONE:
+                    self.observationActionCompleteResult = ObservationActionComplete.INTERRUPT
+                else:
+                    self.observationActionCompleteResult = ObservationActionComplete.SUCCESS
+                self.subactionQueue = [{"type": "reset"}]
 
+        # Otherwise, if we have subactions in our queue, then execute them accordingly.
         elif len(self.subactionQueue) > 0:
             subaction = self.subactionQueue[0]
 
@@ -184,7 +226,6 @@ class Controller(object):
                     self.simpleMover.reset()
                 if self.pathFollower.has_path():
                     self.pathFollower.reset()
-                self.currentAction = ActionType.NONE
                 self.subactionQueue.pop(0)
 
             elif subaction['type'] == "set":
@@ -198,7 +239,6 @@ class Controller(object):
 
                     if self.simpleMover.at_goal():
                         self.simpleMover.reset()
-                        self.currentAction = ActionType.NONE
                         self.subactionQueue.pop(0)
                 else:
                     if subaction['relative']:
@@ -213,11 +253,25 @@ class Controller(object):
 
                     if self.pathFollower.at_goal():
                         self.pathFollower.reset()
-                        self.currentAction = ActionType.NONE
                         self.subactionQueue.pop(0)
                 else:
                     self.pathFollower.set_goals(subaction['goals'])
 
+            # If there are no actions left in the queue, then we are done our current action.
+            if len(self.subactionQueue) == 0:
+                self.currentAction = ActionType.NONE
+
+        # Publish objects detected over the last iteration. TODO TODO TODO -- Requires writing subscriber to AR tags.
+        #self.pubObservationDetectedObjects.publish(ObservationDetectedObjects(self.detectedObjects))
+
+        # Publish action completions/terminations along with the corresponding metadata (e.g., success/failure).
+        if startingAction != self.currentAction:
+            observation = ObservationActionComplete(startingAction, self.currentAction,
+                                                    self.observationActionCompleteResult)
+            self.pubObservationActionComplete.publish(observation)
+            self.observationActionCompleteResult = ObservationActionComplete.SUCCESS
+
+        # Publish visualization such as the pose estimates, map region/object data, and observed objects.
         self.visualize.publish_pose_estimate_history(self.localization)
 
     def srv_action_move(self, request):
@@ -233,9 +287,11 @@ class Controller(object):
         if self.currentAction is not ActionType.NONE:
             return ActionMoveResponse(self.currentAction)
 
-        self.subactionQueue += [{'type': "simple mover", 'heading': request.heading, 'relative': True, 'distance': request.distance}]
+        self.subactionQueue += [{'type': "simple mover", 'heading': request.heading,
+                                 'relative': True, 'distance': request.distance}]
 
         self.currentAction = ActionType.MOVE
+        self.observationActionCompleteResult = ObservationActionComplete.SUCCESS
         return ActionMoveResponse(ActionType.NONE)
 
     def srv_action_move_in_grid(self, request):
@@ -249,7 +305,7 @@ class Controller(object):
         """
 
         if self.currentAction is not ActionType.NONE:
-            return ActionMoveResponse(self.currentAction)
+            return ActionMoveInGridResponse(self.currentAction)
 
         desiredHeading = 0.0
         pi = float(np.pi)
@@ -271,10 +327,12 @@ class Controller(object):
         elif request.action == ActionMoveInGridRequest.SOUTH_WEST:
             desiredHeading = -pi * 3.0 / 4.0
 
-        self.subactionQueue += [{'type': "simple mover", 'heading': desiredHeading, 'relative': False, 'distance': request.grid_cell_size}]
+        self.subactionQueue += [{'type': "simple mover", 'heading': desiredHeading,
+                                 'relative': False, 'distance': request.grid_cell_size}]
 
-        self.currentAction = ActionType.MOVE
-        return ActionMoveResponse(ActionType.NONE)
+        self.currentAction = ActionType.MOVE_IN_GRID
+        self.observationActionCompleteResult = ObservationActionComplete.SUCCESS
+        return ActionMoveInGridResponse(ActionType.NONE)
 
     def srv_action_navigate(self, request):
         """ Handle a service request for the navigate action.
@@ -287,13 +345,14 @@ class Controller(object):
         """
 
         if self.currentAction is not ActionType.NONE:
-            return ActionMoveResponse(self.currentAction)
+            return ActionNavigateResponse(self.currentAction)
 
         self.subactionQueue += [{'type': "path follower", 'goals': [Point(3.0, 2.0, 0.0)]}]
         #self.subactionQueue += [{'type': "path follower", 'goals': request.points}]
 
         self.currentAction = ActionType.NAVIGATE
-        return ActionMoveResponse(ActionType.NONE)
+        self.observationActionCompleteResult = ObservationActionComplete.SUCCESS
+        return ActionNavigateResponse(ActionType.NONE)
 
     def srv_action_navigate_to_region(self, request):
         """ Handle a service request for the navigate to a region action.
@@ -306,17 +365,18 @@ class Controller(object):
         """
 
         if self.currentAction is not ActionType.NONE:
-            return ActionMoveResponse(self.currentAction)
+            return ActioeNavigateToRegionResponse(self.currentAction)
 
         # Assign goals to be 42 random locations within the region. TODO: Refine this behavior.
         goals = [self.cartographer.get_random_point_in_region(request.region_uid) for i in range(42)]
         if None in goals:
-            return ActionMoveResponse(self.currentAction)
+            return ActionNavigateToRegionResponse(self.currentAction)
 
         self.subactionQueue += [{'type': "path follower", 'goals': goals}]
 
-        self.currentAction = ActionType.NAVIGATE
-        return ActionMoveResponse(ActionType.NONE)
+        self.currentAction = ActionType.NAVIGATE_TO_REGION
+        self.observationActionCompleteResult = ObservationActionComplete.SUCCESS
+        return ActionNavigateToRegionResponse(ActionType.NONE)
 
     def srv_action_push(self, request):
         """ Handle a service request for the push action.
@@ -329,16 +389,20 @@ class Controller(object):
         """
 
         if self.currentAction is not ActionType.NONE:
-            return ActionMoveResponse(self.currentAction)
+            return ActionPushResponse(self.currentAction)
 
         self.subactionQueue += [{'type': "set", 'param': "expecting bump", 'value': True},
-                                {'type': "simple mover", 'heading': 0.0, 'relative': True, 'distance': request.lead_in_distance_before_contact},
-                                {'type': "simple mover", 'heading': 0.0, 'relative': True, 'distance': request.push_distance},
-                                {'type': "set", 'param': "expecting bump", 'value': False},
-                                {'type': "simple mover", 'heading': 0.0, 'relative': True, 'distance': -request.recover_distance_after_push}]
+                                {'type': "simple mover", 'heading': 0.0, 'relative': True,
+                                 'distance': request.lead_in_distance_before_contact},
+                                {'type': "simple mover", 'heading': 0.0, 'relative': True,
+                                 'distance': request.push_distance},
+                                {'type': "simple mover", 'heading': 0.0, 'relative': True,
+                                 'distance': -request.recover_distance_after_push},
+                                {'type': "set", 'param': "expecting bump", 'value': False}]
 
         self.currentAction = ActionType.PUSH
-        return ActionMoveResponse(ActionType.NONE)
+        self.observationActionCompleteResult = ObservationActionComplete.FAILURE
+        return ActionPushResponse(ActionType.NONE)
 
     def srv_action_align(self, request):
         """ Handle a service request for the align action.
@@ -351,11 +415,11 @@ class Controller(object):
         """
 
         if self.currentAction is not ActionType.NONE:
-            return ActionMoveResponse(self.currentAction)
+            return ActionAlignResponse(self.currentAction)
 
         objectHeading = self.cartographer.get_object_heading(request.object_uid)
         if objectHeading is None:
-            return ActionMoveResponse(self.currentAction)
+            return ActionAlignResponse(self.currentAction)
 
         goalHeading = objectHeading + float(np.pi)
         if goalHeading > np.pi:
@@ -369,5 +433,16 @@ class Controller(object):
                                 {'type': "simple mover", 'heading': goalHeading, 'relative': False, 'distance': 0.0}]
 
         self.currentAction = ActionType.ALIGN
-        return ActionMoveResponse(ActionType.NONE)
+        self.observationActionCompleteResult = ObservationActionComplete.SUCCESS
+        return ActionAlignResponse(ActionType.NONE)
+
+    def sub_kobuki_bumper(self, msg):
+        """ This method checks for sensing a bump, used for determining action success/failure.
+
+            Parameters:
+                msg     --  The BumperEvent message data.
+        """
+
+        if self.currentAction == ActionType.PUSH:
+            self.observationActionCompleteResult = ObservationActionComplete.SUCCESS
 
