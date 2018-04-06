@@ -147,6 +147,22 @@ Visualization Manager:
       Topic: /epic_navigation_node/path
       Unreliable: false
       Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /regions
+      Name: MarkerArray
+      Namespaces:
+        ~: true
+      Queue Size: 100
+      Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /objects
+      Name: MarkerArray
+      Namespaces:
+        ~: true
+      Queue Size: 100
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -181,11 +197,11 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.00999999978
-      Scale: 85.9161224
+      Scale: 102.824417
       Target Frame: <Fixed Frame>
       Value: TopDownOrtho (rviz)
-      X: 1.43862474
-      Y: 1.96109712
+      X: 1.33363128
+      Y: 1.87962353
     Saved: ~
 Window Geometry:
   Displays:

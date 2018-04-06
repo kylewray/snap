@@ -2,7 +2,7 @@
 
 """ The MIT License (MIT)
 
-    Copyright (c) 2017 Kyle Hollins Wray, University of Massachusetts
+    Copyright (c) 2018 Kyle Hollins Wray, University of Massachusetts
 
     Permission is hereby granted, free of charge, to any person obtaining a copy of
     this software and associated documentation files (the "Software"), to deal in
@@ -271,8 +271,10 @@ class Controller(object):
             self.pubObservationActionComplete.publish(observation)
             self.observationActionCompleteResult = ObservationActionComplete.SUCCESS
 
-        # Publish visualization such as the pose estimates, map region/object data, and observed objects.
+        # Publish visualizations, if enabled, such as the pose estimates, map regions/objects, and observed objects.
         self.visualize.publish_pose_estimate_history(self.localization)
+        self.visualize.publish_regions(self.cartographer)
+        self.visualize.publish_objects(self.cartographer)
 
     def srv_action_move(self, request):
         """ Handle a service request for the move action.

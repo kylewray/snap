@@ -52,7 +52,7 @@ class PathFollower(object):
         self.pathFollowTimeAhead = float(rospy.get_param("~path_follow_time_ahead", 3.0))
         self.maxPathFollowerSpeed = float(rospy.get_param("~max_path_follower_speed", "0.3"))
 
-        self.subMapTopic = rospy.get_param("~sub_map", "map")
+        self.mapFrameID = rospy.get_param("~map_frame_id", "map")
 
         self.srvEpicAddGoalsTopic = rospy.get_param("~srv_epic_add_goals", "epic_add_goals")
         self.srvEpicRemoveGoalsTopic = rospy.get_param("~srv_epic_remove_goals", "epic_remove_goals")
@@ -120,7 +120,7 @@ class PathFollower(object):
 
         for position in self.goalPositions:
             poseStamped = PoseStamped()
-            poseStamped.header.frame_id = self.subMapTopic
+            poseStamped.header.frame_id = self.mapFrameID
             poseStamped.header.stamp = rospy.get_rostime()
             poseStamped.pose = Pose()
             poseStamped.pose.position = position
@@ -204,7 +204,7 @@ class PathFollower(object):
                 srvEpicComputePath = rospy.ServiceProxy(self.srvEpicComputePathTopic, ComputePath)
 
                 poseStamped = PoseStamped()
-                poseStamped.header.frame_id = self.subMapTopic
+                poseStamped.header.frame_id = self.mapFrameID
                 poseStamped.header.stamp = rospy.get_rostime()
                 poseStamped.pose = Pose()
                 poseStamped.pose.position = positionEstimate

@@ -80,6 +80,15 @@ class Cartographer(object):
         except:
             rospy.logwarn("Warning[Cartographer._load_map_data]: Issues encountered loading map data.")
 
+    def get_regions(self):
+        """ Get the list of regions as a dictionary of information.
+
+            Returns:
+                The list of regions as a dictionary of information.
+        """
+
+        return self.regions
+
     def get_region(self, regionUID):
         """ Get the region from the region UID.
 
@@ -134,9 +143,9 @@ class Cartographer(object):
         if region is None:
             return False
 
-        for i in range(len(region.bounds) - 1):
-            a = Point(region.bounds[i][0], region.bounds[i][1], 0.0)
-            b = Point(region.bounds[i + 1][0], region.bounds[i + 1][1], 0.0)
+        for i in range(len(region['bounds']) - 1):
+            a = Point(region['bounds'][i][0], region['bounds'][i][1], 0.0)
+            b = Point(region['bounds'][i + 1][0], region['bounds'][i + 1][1], 0.0)
             c = Point(point.x, point.y, 0.0)
 
             isLeft = ((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x))
@@ -160,6 +169,15 @@ class Cartographer(object):
                 return region
 
         return None
+
+    def get_objects(self):
+        """ Get the list of objects as a dictionary of information.
+
+            Returns:
+                The list of objects as a dictionary of information.
+        """
+
+        return self.objects
 
     def get_object(self, objectUID):
         """ Get the object from the object UID.

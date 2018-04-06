@@ -22,12 +22,15 @@
     CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
-import math
-
 import rospy
 
-from geometry_msgs.msg import PoseStamped, Pose
+from geometry_msgs.msg import PoseStamped, Pose, Point
 from nav_msgs.msg import Path
+from std_msgs.msg import ColorRGBA
+from visualization_msgs.msg import MarkerArray, Marker
+
+import math
+import numpy as np
 
 
 class Visualize(object):
@@ -43,6 +46,10 @@ class Visualize(object):
 
         self.publishRate = float(rospy.get_param("~pub_path_rate", "0.2"))
         self.subKobukiOdometryTopic = rospy.get_param("~sub_kobuki_odometry", "odom")
+
+        self.mapFrameID = rospy.get_param("~map_frame_id", "map")
+
+        self.visualizeAlpha = float(rospy.get_param("~visualize_alpha", "0.2"))
 
         self.pubPath = None
         self.pubRegions = None
@@ -61,10 +68,10 @@ class Visualize(object):
         self.pubPath = rospy.Publisher(pubPathTopic, Path, queue_size=32)
 
         pubRegionsTopic = rospy.get_param("~pub_regions", "regions")
-        self.pubRegions = rospy.Publisher(pubRegionsTopic, ..., queue_size=32)
+        self.pubRegions = rospy.Publisher(pubRegionsTopic, MarkerArray, queue_size=32)
 
         pubObjectsTopic = rospy.get_param("~pub_objects", "objects")
-        self.pubObjects = rospy.Publisher(pubObjectsTopic, ..., queue_size=32)
+        self.pubObjects = rospy.Publisher(pubObjectsTopic, MarkerArray, queue_size=32)
 
         self.started = True
 
@@ -126,13 +133,51 @@ class Visualize(object):
                 cartographer    --  The Cartographer object that contains map object data.
         """
 
-        #regions = list()
+        regionMarkers = MarkerArray()
 
-        # TODO...
-        pass
+        for region in cartographer.get_regions():
+            if len(region['bounds']) < 3:
+                continue
 
-        #self.pubRegions.publish(regions)
+            regionMarker = Marker()
+            regionMarker.header.frame_id = self.mapFrameID
+            regionMarker.header.stamp = rospy.get_rostime()
+            regionMarker.ns = "~"
+            regionMarker.id = 1000 + region['uid']
+            regionMarker.type = Marker.TRIANGLE_LIST
+            regionMarker.action = Marker.ADD
+            regionMarker.pose.position.x = 0.0
+            regionMarker.pose.position.y = 0.0
+            regionMarker.pose.position.z = 0.0
+            regionMarker.pose.orientation.x = 0.0
+            regionMarker.pose.orientation.y = 0.0
+            regionMarker.pose.orientation.z = 0.0
+            regionMarker.pose.orientation.w = 1.0
+            regionMarker.scale.x = 1.0
+            regionMarker.scale.y = 1.0
+            regionMarker.scale.z = 1.0
+            regionMarker.color.a = 1.0
+            regionMarker.color.r = 1.0
+            regionMarker.color.g = 1.0
+            regionMarker.color.b = 1.0
 
+            centerOfRegion = Point(sum([p[0] for p in region['bounds']]) / len(region['bounds']),
+                                   sum([p[1] for p in region['bounds']]) / len(region['bounds']), 0.0)
+            colorOfRegion = ColorRGBA(region['color'][0], region['color'][1], region['color'][2], self.visualizeAlpha)
+
+            for i in range(len(region['bounds']) - 1):
+                regionMarker.points += [Point(region['bounds'][i][0], region['bounds'][i][1], 0.0),
+                                        Point(region['bounds'][i + 1][0], region['bounds'][i + 1][1], 0.0),
+                                        centerOfRegion]
+                regionMarker.colors += [colorOfRegion for i in range(3)]
+            regionMarker.points += [Point(region['bounds'][-1][0], region['bounds'][-1][1], 0.0),
+                                    Point(region['bounds'][0][0], region['bounds'][0][1], 0.0),
+                                    centerOfRegion]
+            regionMarker.colors += [colorOfRegion for i in range(3)]
+
+            regionMarkers.markers += [regionMarker]
+
+        self.pubRegions.publish(regionMarkers)
 
     def publish_objects(self, cartographer):
         """ Publish the object locations in the map.
@@ -141,10 +186,42 @@ class Visualize(object):
                 cartographer    --  The Cartographer object that contains map object data.
         """
 
-        #objects = list()
+        objectMarkers = MarkerArray()
 
-        # TODO...
-        pass
+        for obj in cartographer.get_objects():
+            objectMarker = Marker()
+            objectMarker.header.frame_id = self.mapFrameID
+            objectMarker.header.stamp = rospy.get_rostime()
+            objectMarker.ns = "~"
+            objectMarker.id = 10000 + obj['uid']
+            objectMarker.type = Marker.TRIANGLE_LIST
+            objectMarker.action = Marker.ADD
+            objectMarker.pose.position.x = 0.0
+            objectMarker.pose.position.y = 0.0
+            objectMarker.pose.position.z = 0.0
+            objectMarker.pose.orientation.x = 0.0
+            objectMarker.pose.orientation.y = 0.0
+            objectMarker.pose.orientation.z = 0.0
+            objectMarker.pose.orientation.w = 1.0
+            objectMarker.scale.x = 1.0
+            objectMarker.scale.y = 1.0
+            objectMarker.scale.z = 1.0
+            objectMarker.color.a = 1.0
+            objectMarker.color.r = 1.0
+            objectMarker.color.g = 1.0
+            objectMarker.color.b = 1.0
 
-        #self.pubObjects.publish(objects)
+            colorOfObject = ColorRGBA(obj['color'][0], obj['color'][1], obj['color'][2], self.visualizeAlpha)
+
+            objectMarker.points += [Point(obj['position'][0] + 0.2 * np.cos(obj['heading'] - np.pi / 2.0),
+                                          obj['position'][1] + 0.2 * np.sin(obj['heading'] - np.pi / 2.0), 0.2)]
+            objectMarker.points += [Point(obj['position'][0] + 0.2 * np.cos(obj['heading']),
+                                          obj['position'][1] + 0.2 * np.sin(obj['heading']), 0.2)]
+            objectMarker.points += [Point(obj['position'][0] + 0.2 * np.cos(obj['heading'] + np.pi / 2.0),
+                                          obj['position'][1] + 0.2 * np.sin(obj['heading'] + np.pi / 2.0), 0.2)]
+            objectMarker.colors += [colorOfObject for i in range(3)]
+
+            objectMarkers.markers += [objectMarker]
+
+        self.pubObjects.publish(objectMarkers)
 
