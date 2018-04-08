@@ -3,7 +3,7 @@
 <!-- <param name="/use_sim_time" value="true" /> -->
 
 <!--
-  <arg name="map_name" default="$(find breakfast)/maps/umass.yaml" />
+  <arg name="map_name" default="$(find nova_kobuki)/maps/umass.yaml" />
   <node pkg="map_server" type="map_server" name="map_server" output="screen" args="$(arg map_name)" />
 -->
 
@@ -23,10 +23,10 @@
     <remap from="base_scan" to="/scan" />
   </node>
 
-  <include file="$(find breakfast)/launch/agent_robot.launch" />
-  <include file="$(find breakfast)/launch/autonomy.launch" />
+  <include file="$(find nova_kobuki)/launch/agent_robot.launch" />
+  <include file="$(find nova_kobuki)/launch/autonomy.launch" />
 
-<!--  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find breakfast)/rviz/default.rviz" /> -->
+<!--  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find nova_kobuki)/rviz/default.rviz" /> -->
 
 </launch>
 

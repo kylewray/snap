@@ -1,6 +1,6 @@
 """ The MIT License (MIT)
 
-    Copyright (c) 2017 Kyle Hollins Wray, University of Massachusetts
+    Copyright (c) 2018 Kyle Hollins Wray, University of Massachusetts
 
     Permission is hereby granted, free of charge, to any person obtaining a copy of
     this software and associated documentation files (the "Software"), to deal in
@@ -29,7 +29,7 @@ from catkin_pkg.python_setup import generate_distutils_setup
 
 # Fetch values from "package.xml" here.
 setup_args = generate_distutils_setup(
-    packages=['breakfast_package'],
+    packages=['nova_kobuki_package'],
     package_dir={'': 'src'},
 )
 

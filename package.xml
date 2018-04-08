@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>breakfast</name>
+  <name>nova_kobuki</name>
   <version>0.1.0</version>
-  <description>The breakfast package for control of a Kobuki.</description>
+  <description>A optional 'nova' ROS package for control of a Kobuki.</description>
   <maintainer email="wray@cs.umass.edu">Kyle Hollins Wray</maintainer>
   <license>MIT</license>
 

@@ -30,8 +30,8 @@ from std_msgs.msg import Empty
 from geometry_msgs.msg import Twist, Point
 from kobuki_msgs.msg import BumperEvent
 
-from breakfast.srv import *
-from breakfast.msg import *
+from nova_kobuki.srv import *
+from nova_kobuki.msg import *
 
 from localization import *
 from velocity import *

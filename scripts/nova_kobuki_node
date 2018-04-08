@@ -2,7 +2,7 @@
 
 """ The MIT License (MIT)
 
-    Copyright (c) 2017 Kyle Hollins Wray, University of Massachusetts
+    Copyright (c) 2018 Kyle Hollins Wray, University of Massachusetts
 
     Permission is hereby granted, free of charge, to any person obtaining a copy of
     this software and associated documentation files (the "Software"), to deal in
@@ -25,11 +25,11 @@
 
 import rospy
 
-from breakfast_package.controller import *
+from nova_kobuki_package.controller import *
 
 
 def main():
-    rospy.init_node("breakfast_node")
+    rospy.init_node("nova_kobuki_node")
 
     controller = Controller()
     controller.start()
