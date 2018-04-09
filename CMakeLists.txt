@@ -9,6 +9,7 @@ find_package(catkin REQUIRED COMPONENTS
   geometry_msgs
   nav_msgs
   kobuki_msgs
+  ar_track_alvar_msgs
   message_generation
   epic
 )
@@ -38,12 +39,13 @@ generate_messages(
   geometry_msgs
   nav_msgs
   kobuki_msgs
+  ar_track_alvar_msgs
 )
 
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES nova_kobuki
-  CATKIN_DEPENDS message_runtime epic
+  CATKIN_DEPENDS message_runtime epic ar_track_alvar_msgs
 #  DEPENDS system_lib
 )
 

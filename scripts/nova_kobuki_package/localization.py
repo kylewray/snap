@@ -30,16 +30,24 @@ from geometry_msgs.msg import Twist, Point
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import PointCloud2, LaserScan
 
+from ar_track_alvar_msgs.msg import AlvarMarkers
+
 import numpy as np
 
 
 class Localization(object):
     """ A class for localizing within a known map with known regions and objects (e.g., AR tags). """
 
-    def __init__(self):
-        """ The constructor for the Localization class. """
+    def __init__(self, cartographer):
+        """ The constructor for the Localization class.
+
+            Parameters:
+                cartographer    --  The cartographer object to get map data (e.g., AR tags).
+        """
 
         self.started = False
+
+        self.cartographer = cartographer
 
         self.lastUpdateTime = None
         self.lastOdometryPositionEstimate = None
@@ -52,8 +60,9 @@ class Localization(object):
         self.speedEstimates = [0.0 for i in range(self.maxSpeedEstimates)]
 
         self.subKobukiOdometry = None
-        self.subDepthPointCloud = None
-        self.pubLaserScan = None
+        self.subARTags = None
+        #self.subDepthPointCloud = None
+        #self.pubLaserScan = None
 
     def start(self):
         """ Start the necessary messages to create a map and localize. """
@@ -69,13 +78,16 @@ class Localization(object):
                                                   Odometry,
                                                   self.sub_kobuki_odometry)
 
-        subDepthPointCloudTopic = rospy.get_param("~sub_depth_point_cloud", "depth_point_cloud")
-        self.subDepthPointCloud = rospy.Subscriber(subDepthPointCloudTopic,
-                                                   PointCloud2,
-                                                   self.sub_depth_point_cloud)
+        subARTagsTopic = rospy.get_param("~sub_ar_tags", "ar_pose_marker")
+        self.subARTags = rospy.Subscriber(subARTagsTopic, AlvarMarkers, self.sub_ar_tags)
 
-        pubLaserScanTopic = rospy.get_param("~pub_laser_scan", "scan")
-        self.pubLaserScan = rospy.Publisher(pubLaserScanTopic, LaserScan, queue_size=8)
+        #subDepthPointCloudTopic = rospy.get_param("~sub_depth_point_cloud", "depth_point_cloud")
+        #self.subDepthPointCloud = rospy.Subscriber(subDepthPointCloudTopic,
+        #                                           PointCloud2,
+        #                                           self.sub_depth_point_cloud)
+
+        #pubLaserScanTopic = rospy.get_param("~pub_laser_scan", "scan")
+        #self.pubLaserScan = rospy.Publisher(pubLaserScanTopic, LaserScan, queue_size=8)
 
         self.started = True
 
@@ -201,7 +213,8 @@ class Localization(object):
         # Also, throw out any outliers, namely if we get a message too quickly. This is perhaps
         # caused by two things publishing on the topic, or if a few things can cause a trigger.
         if deltaTime > 0.01 and deltaTime < 1.0:
-            estimate = self._compute_speed_estimate(self.positionEstimate, msg.pose.pose.position, deltaTime)
+            estimate = self._compute_speed_estimate(self.lastOdometryPositionEstimate,
+                                                    msg.pose.pose.position, deltaTime)
             self.speedEstimates += [estimate]
             self.speedEstimates.pop(0)
 
@@ -218,6 +231,51 @@ class Localization(object):
         self.lastOdometryPositionEstimate = msg.pose.pose.position
         self.lastOdometryHeadingEstimate = self._compute_heading_estimate(msg.pose.pose)
 
+    def sub_ar_tags(self, msg):
+        """ Update the localization using the AR tags known on the map.
+
+            Parameters:
+                msg     --  The AlvarMarkers message data.
+        """
+
+        if not self.started:
+            rospy.logwarn("Warn[Localization.sub_ar_tags]: Initialization has not yet completed.")
+            return
+
+        newPositionEstimate = Point()
+        newHeadingEstimate = 0.0
+        numARTags = 0.0
+
+        # Check all AR tags and average their data, if in the map, to get a pose for the robot.
+        for marker in msg.markers:
+            print("Marker ID: %i" % (marker.id))
+            # Check if the observed AR tag is in the map. If not, continue.
+            obj = self.cartographer.get_object(marker.id)
+            if obj is None:
+                continue
+
+            # Get the location in the map and offset it by the observed pose. This is the
+            # observed estimate of the robot position.
+            newPositionEstimate.x = ((numARTags * newPositionEstimate.x
+                                      + (obj['position'][0] - marker.pose.pose.position.x))
+                                     / (numARTags + 1))
+            newPositionEstimate.y = ((numARTags * newPositionEstimate.y
+                                      + (obj['position'][1] - marker.pose.pose.position.y))
+                                     / (numARTags + 1))
+
+            ## TODO: Also get the orientation's yaw of the AR tag and offset that to get a heading.
+            markerHeading = self._compute_heading_estimate(marker.pose.pose)
+            newHeadingEstimate = ((numARTags * newHeadingEstimate
+                                   + (obj['heading'] - markerHeading))
+                                  / (numARTags + 1))
+
+            numARTags += 1.0
+
+        if numARTags > 0.0:
+            self.positionEstimate.x = newPositionEstimate.x
+            self.positionEstimate.y = newPositionEstimate.y
+            #self.headingEstimate = newHeadingEstimate
+
     def sub_depth_point_cloud(self, msg):
         """ Update the raw depth point cloud information, including sub-sampling and extracting abstract data.
 
@@ -229,8 +287,9 @@ class Localization(object):
             rospy.logwarn("Warn[Localization.sub_depth_point_cloud]: Initialization has not yet completed.")
             return
 
-        # TODO: Take raw point cloud, find points at a height, populate a Laser whatever msg, publish on map topic...
-        # Run mapping node in separate window. In rviz listen to the map topic. See how it does at mapping...
+        # TODO: Take raw point cloud, find points at a height, populate a Laser whatever msg,
+        # publish on map topic... Run mapping node in separate window. In rviz listen to the
+        # map topic. See how it does at mapping... Update: It sucks.
 
         #fakeLaserScan = LaserScan()
         #fakeLaserScan.header = msg.header

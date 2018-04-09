@@ -6,11 +6,14 @@
   <node pkg="map_server" type="map_server" name="map_server" output="screen" args="$(arg map_name)" />
 
   <node pkg="joy" type="joy_node" name="joy_node" output="screen">
-    <param name="dev" value="/dev/input/js2" />
+    <!--param name="dev" value="/dev/input/js2" /-->
   </node>
 
-  <include file="$(find nova_kobuki)/launch/agent_sim.launch" />
+  <include file="$(find nova_kobuki)/launch/kobuki_sim.launch" />
   <include file="$(find nova_kobuki)/launch/autonomy.launch" />
+
+  <!-- TODO: Remove once debugging is complete. -->
+  <include file="$(find nova_kobuki)/launch/vision_kinect.launch" />
 
   <node name="rviz" pkg="rviz" type="rviz" args="-d $(find nova_kobuki)/rviz/default.rviz" />
 

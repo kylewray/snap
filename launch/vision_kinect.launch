@@ -1,0 +1,35 @@
+<?xml version="1.0" ?>
+<launch>
+  <!-- We use OpenNI for our Kinect driver. Specifically, we
+       recommend the 'freenect' hardware driver with OpenNI. -->
+  <include file="$(find openni_launch)/launch/openni.launch" />
+
+  <node pkg="tf" type="static_transform_publisher" name="base_link_to_camera_link" args="0 0 0.3048 0 0 0 /base_link /camera_link 50"/>
+
+  <node pkg="depthimage_to_laserscan" type="depthimage_to_laserscan" name="depthimage_to_laserscan_node" output="screen">
+    <remap from="image" to="/camera/depth/image_raw" />
+  </node>
+
+  <!-- DEBUG: 'gmapping' test. It sucks, no surprise. -->
+  <!--node pkg="gmapping" type="slam_gmapping" name="slam_gmapping_node" output="screen">
+    <remap from="base_scan" to="/scan" />
+  </node-->
+
+
+  <!-- AR Track code specifies argument list in a specific order.
+       Below is a convenient way to load the node. -->
+  <arg name="marker_size" default="7" />
+  <arg name="max_new_marker_error" default="0.08" />
+  <arg name="max_track_error" default="0.05" />
+
+  <arg name="cam_image_topic" default="/camera/depth_registered/points" />
+  <arg name="cam_info_topic" default="/camera/rgb/camera_info" />		
+  <arg name="output_frame" default="/camera_link" />
+
+  <arg name="debug" default="false" />
+  <arg if="$(arg debug)" name="launch_prefix" value="xterm -e gdb --args" />
+  <arg unless="$(arg debug)" name="launch_prefix" value="" />
+
+  <node name="ar_track_alvar" pkg="ar_track_alvar" type="individualMarkers" respawn="false" output="screen" args="$(arg marker_size) $(arg max_new_marker_error) $(arg max_track_error) $(arg cam_image_topic) $(arg cam_info_topic) $(arg output_frame)" launch-prefix="$(arg launch_prefix)" />
+
+</launch>

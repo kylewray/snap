@@ -59,9 +59,9 @@ class Controller(object):
 
         self.detectedObjects = list()
 
-        self.localization = Localization()
-        self.velocity = Velocity()
         self.cartographer = Cartographer()
+        self.localization = Localization(self.cartographer)
+        self.velocity = Velocity()
         self.recovery = Recovery()
         self.teleoperator = Teleoperator()
         self.simpleMover = SimpleMover()
@@ -101,9 +101,9 @@ class Controller(object):
         self.pubObservationDetectedObjects = rospy.Publisher(pubObservationDetectedObjectsTopic,
                                                              ObservationDetectedObjects, queue_size=32)
 
+        self.cartographer.start()
         self.localization.start()
         self.velocity.start()
-        self.cartographer.start()
         self.recovery.start()
         self.teleoperator.start()
         self.simpleMover.start()
@@ -162,9 +162,9 @@ class Controller(object):
 
         self.detectedObjects = list()
 
+        self.cartographer.reset()
         self.localization.reset()
         self.velocity.reset()
-        self.cartographer.reset()
         self.recovery.reset()
         self.teleoperator.reset()
         self.simpleMover.reset()
@@ -272,6 +272,7 @@ class Controller(object):
             self.observationActionCompleteResult = ObservationActionComplete.SUCCESS
 
         # Publish visualizations, if enabled, such as the pose estimates, map regions/objects, and observed objects.
+        self.visualize.publish_robot_pose_estimate(self.localization)
         self.visualize.publish_pose_estimate_history(self.localization)
         self.visualize.publish_regions(self.cartographer)
         self.visualize.publish_objects(self.cartographer)

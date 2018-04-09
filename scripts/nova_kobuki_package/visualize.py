@@ -24,7 +24,9 @@
 
 import rospy
 
-from geometry_msgs.msg import PoseStamped, Pose, Point
+from tf.transformations import quaternion_from_euler
+
+from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped, Pose, PoseWithCovariance, Point, Quaternion
 from nav_msgs.msg import Path
 from std_msgs.msg import ColorRGBA
 from visualization_msgs.msg import MarkerArray, Marker
@@ -45,12 +47,12 @@ class Visualize(object):
         self.lastPathPublishTime = rospy.get_rostime()
 
         self.publishRate = float(rospy.get_param("~pub_path_rate", "0.2"))
-        self.subKobukiOdometryTopic = rospy.get_param("~sub_kobuki_odometry", "odom")
 
         self.mapFrameID = rospy.get_param("~map_frame_id", "map")
 
         self.visualizeAlpha = float(rospy.get_param("~visualize_alpha", "0.2"))
 
+        self.pubRobotPose = None
         self.pubPath = None
         self.pubRegions = None
         self.pubObjects = None
@@ -64,13 +66,16 @@ class Visualize(object):
 
         rospy.loginfo("Info[Visualize.start]: Starting visualize sub-controller.")
 
-        pubPathTopic = rospy.get_param("~pub_path", "path")
+        pubRobotPoseTopic = rospy.get_param("~pub_visualize_robot_pose", "/initialpose")
+        self.pubRobotPose = rospy.Publisher(pubRobotPoseTopic, PoseWithCovarianceStamped, queue_size=32)
+
+        pubPathTopic = rospy.get_param("~pub_visualize_path", "path")
         self.pubPath = rospy.Publisher(pubPathTopic, Path, queue_size=32)
 
-        pubRegionsTopic = rospy.get_param("~pub_regions", "regions")
+        pubRegionsTopic = rospy.get_param("~pub_visualize_regions", "regions")
         self.pubRegions = rospy.Publisher(pubRegionsTopic, MarkerArray, queue_size=32)
 
-        pubObjectsTopic = rospy.get_param("~pub_objects", "objects")
+        pubObjectsTopic = rospy.get_param("~pub_visualize_objects", "objects")
         self.pubObjects = rospy.Publisher(pubObjectsTopic, MarkerArray, queue_size=32)
 
         self.started = True
@@ -83,6 +88,29 @@ class Visualize(object):
         self.poseEstimateHistory = list()
         self.lastPathPublishTime = rospy.get_rostime()
 
+    def publish_robot_pose_estimate(self, localization):
+        """ Publish the pose estimate for the robot using its tf.
+
+            Parameters:
+                localization    --  The Localization object, which contains position and heading estimates.
+        """
+
+        if not self.started:
+            rospy.logwarn("Warn[Visualize.publish_regions]: Visualize has not yet been started.")
+            return
+
+        poseWithCovStamped = PoseWithCovarianceStamped()
+        poseWithCovStamped.header.frame_id = self.mapFrameID
+        poseWithCovStamped.header.stamp = rospy.get_rostime()
+
+        poseWithCovStamped.pose = PoseWithCovariance()
+        poseWithCovStamped.pose.pose.position = localization.get_position_estimate()
+
+        v = quaternion_from_euler(0.0, 0.0, localization.get_heading_estimate())
+        poseWithCovStamped.pose.pose.orientation = Quaternion(v[0], v[1], v[2], v[3])
+
+        self.pubRobotPose.publish(poseWithCovStamped)
+
     def publish_pose_estimate_history(self, localization):
         """ Record the path taken, but only at a certain rate.
 
@@ -92,9 +120,6 @@ class Visualize(object):
 
         if not self.started:
             rospy.logwarn("Warn[Visualize.publish_path]: Visualize has not yet been started.")
-            return
-
-        if localization is None:
             return
 
         currentTime = rospy.get_rostime()
@@ -109,7 +134,7 @@ class Visualize(object):
             # Only consider adding the new pose if there is a large enough difference in location (>= 0.1 meters).
             if len(self.poseEstimateHistory) == 0 or distanceTravelled >= 0.1:
                 poseStamped = PoseStamped()
-                poseStamped.header.frame_id = self.subKobukiOdometryTopic
+                poseStamped.header.frame_id = self.mapFrameID
                 poseStamped.header.stamp = currentTime
                 poseStamped.pose = Pose()
                 poseStamped.pose.position = position
@@ -118,7 +143,7 @@ class Visualize(object):
 
             # Create and publish the path.
             path = Path()
-            path.header.frame_id = self.subKobukiOdometryTopic
+            path.header.frame_id = self.mapFrameID
             path.header.stamp = currentTime
             path.poses = self.poseEstimateHistory
 
@@ -132,6 +157,10 @@ class Visualize(object):
             Parameters:
                 cartographer    --  The Cartographer object that contains map object data.
         """
+
+        if not self.started:
+            rospy.logwarn("Warn[Visualize.publish_regions]: Visualize has not yet been started.")
+            return
 
         regionMarkers = MarkerArray()
 
@@ -185,6 +214,10 @@ class Visualize(object):
             Parameters:
                 cartographer    --  The Cartographer object that contains map object data.
         """
+
+        if not self.started:
+            rospy.logwarn("Warn[Visualize.publish_objects]: Visualize has not yet been started.")
+            return
 
         objectMarkers = MarkerArray()
 

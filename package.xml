@@ -13,6 +13,8 @@
   <depend>geometry_msgs</depend>
   <depend>nav_msgs</depend>
 
+  <depend>ar_track_alvar_msgs</depend>
+
   <depend>message_generation</depend>
   <depend>message_runtime</depend>
 
