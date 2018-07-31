@@ -8,3 +8,14 @@ A controller node for a Kobuki, with straight-forward 'nova' and 'epic' integrat
 - Control the robot with a controller/joystick, overriding autonomy.
 - Recovery actions if an unexpected bump, floor drop, or wheel drop is detected.
 
+## Dependencies
+
+- ros-<version>-desktop-full
+- ros-<version>-kobuki\*
+- ros-<version>-ar-track-alvar\*
+- ros-<version>-openni\*
+- ros-<version>-joy
+- ros-<version>-depthimage-to-laserscan
+- epic (path planning)
+- nova (optional, but ideal)
+
