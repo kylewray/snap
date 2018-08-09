@@ -21,7 +21,7 @@
     <param name="pub_map_path" value="path" />
   </node>
 
-  <node pkg="nova_kobuki" type="nova_kobuki_node" name="nova_kobuki_node" output="screen">
+  <node pkg="snap" type="snap_node" name="snap_node" output="screen">
     <remap from="base_pose_ground_truth" to="odom" />                                   <!-- nav_msgs -->
     <remap from="evt_bump" to="mobile_base/events/bumper" />                            <!-- kobuki_msgs -->
     <remap from="evt_cliff" to="mobile_base/events/cliff" />                            <!-- kobuki_msgs -->
@@ -39,7 +39,7 @@
     <param name="update_rate" value="10" />
 
     <param name="map_name" value="umass" />
-    <param name="map_directory" value="$(find nova_kobuki)/maps" />
+    <param name="map_directory" value="$(find snap)/maps" />
 
     <param name="sub_kobuki_odometry" value="odom" />
     <param name="sub_kobuki_bumper" value="evt_bump" />

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(nova_kobuki)
+project(snap)
 
 #add_definitions(-std=c++11)
 
@@ -44,7 +44,7 @@ generate_messages(
 
 catkin_package(
 #  INCLUDE_DIRS include
-#  LIBRARIES nova_kobuki
+#  LIBRARIES snap
   CATKIN_DEPENDS message_runtime epic ar_track_alvar_msgs
 #  DEPENDS system_lib
 )
@@ -54,7 +54,7 @@ include_directories(
 )
 
 catkin_install_python(
-  PROGRAMS scripts/nova_kobuki_node
+  PROGRAMS scripts/snap_node
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

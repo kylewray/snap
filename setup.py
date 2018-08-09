@@ -29,7 +29,7 @@ from catkin_pkg.python_setup import generate_distutils_setup
 
 # Fetch values from "package.xml" here.
 setup_args = generate_distutils_setup(
-    packages=['nova_kobuki_package'],
+    packages=['snap_package'],
     package_dir={'': 'src'},
 )
 

@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>nova_kobuki</name>
-  <version>0.1.0</version>
-  <description>A optional 'nova' ROS package for control of a Kobuki.</description>
+  <name>snap</name>
+  <version>0.2.0</version>
+  <description>A controller node for a Kobuki, with straight-forward 'nova' and 'epic' integration, making robot research a snap.</description>
   <maintainer email="wray@cs.umass.edu">Kyle Hollins Wray</maintainer>
   <license>MIT</license>
 

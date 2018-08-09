@@ -1,7 +1,7 @@
-nova_kobuki
+snap
 ====
 
-A controller node for a Kobuki, with straight-forward 'nova' and 'epic' integration.
+ A controller node for a Kobuki, with straight-forward 'nova' and 'epic' integration, making robot research a snap. 
 
 ## Objectives
 - Provide autonomous control via service calls (e.g., for 'nova' to utilize).

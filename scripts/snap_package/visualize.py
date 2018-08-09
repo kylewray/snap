@@ -36,7 +36,7 @@ import numpy as np
 
 
 class Visualize(object):
-    """ Visualization of the 'nova_kobuki' robot's state and behavior. """
+    """ Visualization of the 'snap' robot's state and behavior. """
 
     def __init__(self):
         """ The constructor for the Visualize class. """

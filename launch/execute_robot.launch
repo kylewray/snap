@@ -2,18 +2,18 @@
 <launch>
 <!-- <param name="/use_sim_time" value="true" /> -->
 
-  <!--arg name="map_name" default="$(find nova_kobuki)/maps/umass.yaml" />
+  <!--arg name="map_name" default="$(find snap)/maps/umass.yaml" />
   <node pkg="map_server" type="map_server" name="map_server" output="screen" args="$(arg map_name)" /-->
 
   <node pkg="joy" type="joy_node" name="joy_node" output="screen">
     <!--param name="dev" value="/dev/input/js2" /-->
   </node>
 
-  <include file="$(find nova_kobuki)/launch/kobuki_robot.launch" />
-  <include file="$(find nova_kobuki)/launch/vision_kinect.launch" />
-  <include file="$(find nova_kobuki)/launch/autonomy.launch" />
+  <include file="$(find snap)/launch/kobuki_robot.launch" />
+  <include file="$(find snap)/launch/vision_kinect.launch" />
+  <include file="$(find snap)/launch/autonomy.launch" />
 
-  <!--node name="rviz" pkg="rviz" type="rviz" args="-d $(find nova_kobuki)/rviz/default.rviz" /-->
+  <!--node name="rviz" pkg="rviz" type="rviz" args="-d $(find snap)/rviz/default.rviz" /-->
 
 </launch>
 
