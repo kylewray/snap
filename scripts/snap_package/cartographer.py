@@ -129,7 +129,7 @@ class Cartographer(object):
         return point
 
     def is_point_in_region(self, regionUID, point):
-        """ Check if the point provided is within the region provided.
+        """ Check if the point provided is within the clockwise region bounds provided.
 
             Parameters:
                 regionUID   --  The region UID.

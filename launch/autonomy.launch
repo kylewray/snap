@@ -1,6 +1,10 @@
 <?xml version="1.0" ?>
 <launch>
 
+  <!-- Passed in map information from parent include launch file. -->
+  <arg name="map_short_name" />
+  <arg name="map_directory" />
+
   <node pkg="epic" type="epic_navigation_node" name="epic_navigation_node" output="screen">
     <param name="algorithm" value="harmonic" />
     <param name="rviz_support" value="false" />
@@ -38,8 +42,8 @@
 
     <param name="update_rate" value="10" />
 
-    <param name="map_name" value="umass" />
-    <param name="map_directory" value="$(find snap)/maps" />
+    <param name="map_name" value="$(arg map_short_name)" />
+    <param name="map_directory" value="$(arg map_directory)" />
 
     <param name="sub_kobuki_odometry" value="odom" />
     <param name="sub_kobuki_bumper" value="evt_bump" />
