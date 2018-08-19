@@ -1,0 +1,9 @@
+# A service to get a connection regions given a UID.
+
+uint64 uid
+
+---
+
+bool exists
+Region[] regions
+

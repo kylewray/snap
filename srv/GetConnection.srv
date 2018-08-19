@@ -1,0 +1,9 @@
+# A service to get a connection given a UID.
+
+uint64 uid
+
+---
+
+bool exists
+Connection connection
+

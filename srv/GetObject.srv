@@ -1,0 +1,9 @@
+# A service to get an object given a UID.
+
+uint64 uid
+
+---
+
+bool exists
+Object object
+

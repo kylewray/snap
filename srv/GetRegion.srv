@@ -1,0 +1,9 @@
+# A service to get a region given a UID.
+
+uint64 uid
+
+---
+
+bool exists
+Region region
+

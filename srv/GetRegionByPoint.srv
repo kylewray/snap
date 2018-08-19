@@ -1,0 +1,10 @@
+# A service to get a region given a point.
+
+geometry_msgs/Point point
+
+---
+
+bool exists
+Region region
+
+

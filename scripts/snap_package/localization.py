@@ -32,6 +32,8 @@ from sensor_msgs.msg import PointCloud2, LaserScan
 
 from ar_track_alvar_msgs.msg import AlvarMarkers
 
+from snap.msg import LocalizationEstimate
+
 import numpy as np
 
 
@@ -61,6 +63,9 @@ class Localization(object):
 
         self.subKobukiOdometry = None
         self.subARTags = None
+
+        self.pubLocalization = None
+
         #self.subDepthPointCloud = None
         #self.pubLaserScan = None
 
@@ -80,6 +85,9 @@ class Localization(object):
 
         subARTagsTopic = rospy.get_param("~sub_ar_tags", "ar_pose_marker")
         self.subARTags = rospy.Subscriber(subARTagsTopic, AlvarMarkers, self.sub_ar_tags)
+
+        pubLocalizationTopic = rospy.get_param("~pub_localization", "~localization")
+        self.pubLocalization = rospy.Publisher(pubLocalizationTopic, LocalizationEstimate, queue_size=8)
 
         #subDepthPointCloudTopic = rospy.get_param("~sub_depth_point_cloud", "depth_point_cloud")
         #self.subDepthPointCloud = rospy.Subscriber(subDepthPointCloudTopic,
@@ -303,4 +311,23 @@ class Localization(object):
         #fakeLaserScan.
 
         #self.pubLaserScan.publish(fakeLaserScan)
+
+    def publish_localization(self):
+        """ Publish the current localization estimates for the robot. """
+
+        if not self.started:
+            rospy.logwarn("Warn[Localization.publish_localization]: Initialization has not yet completed.")
+            return
+
+        localization = LocalizationEstimate()
+        localization.position = self.get_position_estimate()
+        localization.heading = self.get_heading_estimate()
+        localization.speed = self.get_speed_estimate()
+        regionEstimate = self.cartographer.get_region_by_point(localization.position)
+        if regionEstimate is not None:
+            localization.region_uid = int(regionEstimate['uid'])
+        else:
+            localization.region_uid = int(-1)
+
+        self.pubLocalization.publish(localization)
 

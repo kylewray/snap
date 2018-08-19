@@ -18,7 +18,7 @@
   </include>
 
   <!-- TODO: Remove once debugging is complete. -->
-  <include file="$(find snap)/launch/vision_kinect.launch" />
+  <!--include file="$(find snap)/launch/vision_kinect.launch" /-->
 
   <node name="rviz" pkg="rviz" type="rviz" args="-d $(find snap)/rviz/default.rviz" />
 

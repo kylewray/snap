@@ -19,6 +19,10 @@ catkin_python_setup()
 add_message_files(
   FILES
   ActionType.msg
+  Region.msg
+  Connection.msg
+  Object.msg
+  LocalizationEstimate.msg
   ObservationActionComplete.msg
   ObservationDetectedObjects.msg
 )
@@ -31,6 +35,15 @@ add_service_files(
   ActionNavigateToRegion.srv
   ActionPush.srv
   ActionAlign.srv
+  GetRegions.srv
+  GetRegion.srv
+  GetRegionByPoint.srv
+  GetRegionNeighbors.srv
+  GetConnections.srv
+  GetConnection.srv
+  GetConnectionRegions.srv
+  GetObjects.srv
+  GetObject.srv
 )
 
 generate_messages(

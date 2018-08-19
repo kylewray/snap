@@ -1,0 +1,6 @@
+# This service gets the regions from the Cartographer.
+
+---
+
+Region[] regions
+

@@ -1,0 +1,6 @@
+# This service gets the objects from the Cartographer.
+
+---
+
+Object[] objects
+

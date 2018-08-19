@@ -1,0 +1,9 @@
+# A service to get the neighbors of a particular region given a UID.
+
+uint64 uid
+
+---
+
+bool exists
+Region[] regions
+

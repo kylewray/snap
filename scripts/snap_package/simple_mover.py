@@ -47,6 +47,9 @@ class SimpleMover(object):
         self.maxSimpleMoverSpeed = float(rospy.get_param("~max_simple_mover_speed", "0.3"))
         self.maxSimpleMoverHeading = float(rospy.get_param("~max_simple_mover_heading", str(np.pi)))
 
+        self.goalHeadingThreshold = float(rospy.get_param("~simple_mover_goal_heading_threshold", "0.05"))
+        self.goalDistanceThreshold = float(rospy.get_param("~simple_mover_goal_distance_threshold", "0.1"))
+
         self.pubKobukiVelocity = None
 
     def start(self):
@@ -171,11 +174,11 @@ class SimpleMover(object):
             desiredSpeed *= -float(np.clip(abs(-self.goalDistance - distanceFromStart), 0.0, 1.0))
 
         # First check if we need to correct the heading.
-        if abs(self.goalHeading - headingEstimate) > 0.05:
+        if abs(self.goalHeading - headingEstimate) > self.goalHeadingThreshold:
             control.angular.z = velocity.compute_heading(localization, self.goalHeading)
 
         # Given the heading is correct, we check the distance next to move the desired distance.
-        elif abs(abs(self.goalDistance) - distanceFromStart) > 0.1:
+        elif abs(abs(self.goalDistance) - distanceFromStart) > self.goalDistanceThreshold:
             control.linear.x = localization.get_speed_estimate() + velocity.compute_speed(localization, desiredSpeed)
 
         # If both heading and distance are at the goal, then we are done!

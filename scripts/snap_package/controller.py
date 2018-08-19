@@ -93,11 +93,11 @@ class Controller(object):
         pubKobukiResetOdometryTopic = rospy.get_param("~pub_kobuki_reset_odometry", "cmd_reset_odom")
         self.pubKobukiResetOdometry = rospy.Publisher(pubKobukiResetOdometryTopic, Empty, queue_size=32)
 
-        pubObservationActionCompleteTopic = rospy.get_param("~pub_obs_action_complete", "obs_action_complete")
+        pubObservationActionCompleteTopic = rospy.get_param("~pub_obs_action_complete", "~obs_action_complete")
         self.pubObservationActionComplete = rospy.Publisher(pubObservationActionCompleteTopic,
                                                             ObservationActionComplete, queue_size=32)
 
-        pubObservationDetectedObjectsTopic = rospy.get_param("~pub_obs_detected_objects", "obs_detected_objects")
+        pubObservationDetectedObjectsTopic = rospy.get_param("~pub_obs_detected_objects", "~obs_detected_objects")
         self.pubObservationDetectedObjects = rospy.Publisher(pubObservationDetectedObjectsTopic,
                                                              ObservationDetectedObjects, queue_size=32)
 
@@ -260,6 +260,9 @@ class Controller(object):
             # If there are no actions left in the queue, then we are done our current action.
             if len(self.subactionQueue) == 0:
                 self.currentAction = ActionType.NONE
+
+        # Publish the localization of the robot.
+        self.localization.publish_localization()
 
         # Publish objects detected over the last iteration. TODO TODO TODO -- Requires writing subscriber to AR tags.
         #self.pubObservationDetectedObjects.publish(ObservationDetectedObjects(self.detectedObjects))

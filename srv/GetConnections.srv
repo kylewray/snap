@@ -1,0 +1,6 @@
+# This service gets the connections from the Cartographer.
+
+---
+
+Connection[] connections
+
