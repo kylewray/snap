@@ -50,7 +50,7 @@
     <param name="srv_epic_reset_free_cells" value="/epic_navigation_node/reset_free_cells" />
     <param name="srv_epic_compute_path" value="/epic_navigation_node/compute_path" />
 
-    <param name="pub_path" value="/path" />
+    <param name="pub_path" value="path" />
     <param name="pub_path_rate" value="0.2" />
   </node>
 

@@ -162,11 +162,33 @@ class Cartographer(object):
 
         return None
 
-    def get_random_point_in_region(self, regionUID):
-        """ Get a random location in a particular region.
+    def get_center_of_region(self, regionUID):
+        """ Get the center of a region---that is, the average of the bounds.
 
             Parameters:
                 regionUID   --  The UID of the region to randomly choose a point within.
+
+            Returns:
+                The average of the bounds of the region, or None if the input is invalid.
+        """
+
+        region = self.get_region(regionUID)
+        if region is None:
+            return None
+
+        point = Point()
+        point.x = float(sum([p[0] for p in region['bounds']])) / float(len(region['bounds']))
+        point.y = float(sum([p[1] for p in region['bounds']])) / float(len(region['bounds']))
+
+        return point
+
+    def get_random_point_in_region(self, regionUID, weightPadding=0.1):
+        """ Get a random location in a particular region. Optionally, ensure it is weighted away from edges.
+
+            Parameters:
+                regionUID       --  The UID of the region to randomly choose a point within.
+                weightPadding   --  Optionally, the amount of weight to 'pad' around the bounds.
+                                    Default is 0.1; 0.0 is totally random; 1.0 is average center of bounds.
 
             Returns:
                 A random point in the region, or None if the input is invalid.
@@ -176,7 +198,7 @@ class Cartographer(object):
         if region is None:
             return None
 
-        weight = [rnd.random() for p in region['bounds']]
+        weight = [(1.0 - weightPadding) * rnd.random() + weightPadding for p in region['bounds']]
         denominator = sum(weight)
 
         point = Point()
@@ -200,9 +222,10 @@ class Cartographer(object):
         if region is None:
             return False
 
-        for i in range(len(region['bounds']) - 1):
+        for i in range(len(region['bounds'])):
+            iPlusOne = (i + 1) % len(region['bounds'])
             a = Point(region['bounds'][i][0], region['bounds'][i][1], 0.0)
-            b = Point(region['bounds'][i + 1][0], region['bounds'][i + 1][1], 0.0)
+            b = Point(region['bounds'][iPlusOne][0], region['bounds'][iPlusOne][1], 0.0)
             c = Point(point.x, point.y, 0.0)
 
             isLeft = ((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x))

@@ -367,8 +367,10 @@ class Controller(object):
         if self.currentAction is not ActionType.NONE:
             return ActionNavigateToRegionResponse(self.currentAction)
 
-        # Assign goals to be 42 random locations within the region. TODO: Refine this behavior.
-        goals = [self.cartographer.get_random_point_in_region(request.region_uid) for i in range(42)]
+        # Basic: Assign goals to be just the center.
+        #goals = [self.cartographer.get_center_of_region(request.region_uid)]
+        # Random: Assign goals to be 16 random locations within the region.
+        goals = [self.cartographer.get_random_point_in_region(request.region_uid) for i in range(16)]
         if None in goals:
             return ActionNavigateToRegionResponse(self.currentAction)
 
