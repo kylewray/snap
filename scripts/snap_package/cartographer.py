@@ -55,6 +55,9 @@ class Cartographer(object):
         # Used to properly publish the alpha value of a color.
         self.visualizeAlpha = float(rospy.get_param("~visualize_alpha", "0.2"))
 
+        # TODO: Publish detected objects that match the map's objects.
+        self.pubObservationObjectDetection = None
+
     def start(self):
         """ Start the necessary messages for cartographer. """
 

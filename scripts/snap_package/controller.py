@@ -57,8 +57,6 @@ class Controller(object):
         self.observationActionCompleteResult = ObservationActionComplete.NONE
         self.subactionQueue = list()
 
-        self.detectedObjects = list()
-
         self.cartographer = Cartographer()
         self.localization = Localization(self.cartographer)
         self.velocity = Velocity()
@@ -74,7 +72,6 @@ class Controller(object):
         self.pubKobukiResetOdometry = None
 
         self.pubObservationActionComplete = None
-        self.pubObservationObjectDetection = None
         self.pubObservationRecovery = None
         self.pubObservationTeleoperator = None
 
@@ -93,11 +90,13 @@ class Controller(object):
         pubKobukiResetOdometryTopic = rospy.get_param("~pub_kobuki_reset_odometry", "cmd_reset_odom")
         self.pubKobukiResetOdometry = rospy.Publisher(pubKobukiResetOdometryTopic, Empty, queue_size=32)
 
-        pubObservationActionCompleteTopic = rospy.get_param("~pub_obs_action_complete", "~obs_action_complete")
+        pubObservationActionCompleteTopic = rospy.get_param("~pub_observation_action_complete",
+                                                            "~observation_action_complete")
         self.pubObservationActionComplete = rospy.Publisher(pubObservationActionCompleteTopic,
                                                             ObservationActionComplete, queue_size=32)
 
-        pubObservationDetectedObjectsTopic = rospy.get_param("~pub_obs_detected_objects", "~obs_detected_objects")
+        pubObservationDetectedObjectsTopic = rospy.get_param("~pub_observation_detected_objects",
+                                                             "~observation_detected_objects")
         self.pubObservationDetectedObjects = rospy.Publisher(pubObservationDetectedObjectsTopic,
                                                              ObservationDetectedObjects, queue_size=32)
 
@@ -159,8 +158,6 @@ class Controller(object):
         self.currentAction = ActionType.NONE
         self.observationActionCompleteResult = ObservationActionComplete.NONE
         self.subactionQueue = list()
-
-        self.detectedObjects = list()
 
         self.cartographer.reset()
         self.localization.reset()
@@ -263,9 +260,6 @@ class Controller(object):
 
         # Publish the localization of the robot.
         self.localization.publish_localization()
-
-        # Publish objects detected over the last iteration. TODO TODO TODO -- Requires writing subscriber to AR tags.
-        #self.pubObservationDetectedObjects.publish(ObservationDetectedObjects(self.detectedObjects))
 
         # Publish action completions/terminations along with the corresponding metadata (e.g., success/failure).
         if startingAction != self.currentAction:
@@ -371,7 +365,7 @@ class Controller(object):
         """
 
         if self.currentAction is not ActionType.NONE:
-            return ActioeNavigateToRegionResponse(self.currentAction)
+            return ActionNavigateToRegionResponse(self.currentAction)
 
         # Assign goals to be 42 random locations within the region. TODO: Refine this behavior.
         goals = [self.cartographer.get_random_point_in_region(request.region_uid) for i in range(42)]
