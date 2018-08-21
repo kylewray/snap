@@ -151,11 +151,11 @@ class Visualize(object):
 
             self.lastPathPublishTime = currentTime
 
-    def publish_regions(self, cartographer):
+    def publish_regions(self, snapMap):
         """ Publish the region locations in the map.
 
             Parameters:
-                cartographer    --  The Cartographer object that contains map object data.
+                snapMap     --  The SnapMap object that contains map object data.
         """
 
         if not self.started:
@@ -164,7 +164,7 @@ class Visualize(object):
 
         regionMarkers = MarkerArray()
 
-        for region in cartographer.get_regions():
+        for region in snapMap.get_regions():
             if len(region['bounds']) < 3:
                 continue
 
@@ -208,11 +208,11 @@ class Visualize(object):
 
         self.pubRegions.publish(regionMarkers)
 
-    def publish_objects(self, cartographer):
+    def publish_objects(self, snapMap):
         """ Publish the object locations in the map.
 
             Parameters:
-                cartographer    --  The Cartographer object that contains map object data.
+                snapMap     --  The SnapMap object that contains map object data.
         """
 
         if not self.started:
@@ -221,7 +221,7 @@ class Visualize(object):
 
         objectMarkers = MarkerArray()
 
-        for obj in cartographer.get_objects():
+        for obj in snapMap.get_objects():
             objectMarker = Marker()
             objectMarker.header.frame_id = self.mapFrameID
             objectMarker.header.stamp = rospy.get_rostime()

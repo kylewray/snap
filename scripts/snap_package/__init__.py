@@ -22,7 +22,7 @@
     CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
-__all__ = ["controller", "slam", "velocity", "recovery", "teleoperater",
-           "simple_mover", "path_follower", "visualize"]
+__all__ = ["cartographer", "controller", "localization", "snap_map", "path_folower",
+           "recovery", "simple_mover", "teleoperater", "visualize"]
 
 

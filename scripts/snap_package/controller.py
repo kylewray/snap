@@ -34,8 +34,9 @@ from snap.srv import *
 from snap.msg import *
 
 from localization import *
-from velocity import *
 from cartographer import *
+from velocity import *
+from snap_map import *
 from recovery import *
 from teleoperator import *
 from simple_mover import *
@@ -57,8 +58,9 @@ class Controller(object):
         self.observationActionCompleteResult = ObservationActionComplete.NONE
         self.subactionQueue = list()
 
-        self.cartographer = Cartographer()
-        self.localization = Localization(self.cartographer)
+        self.snapMap = SnapMap()
+        self.localization = Localization(self.snapMap)
+        self.cartographer = Cartographer(self.snapMap, self.localization)
         self.velocity = Velocity()
         self.recovery = Recovery()
         self.teleoperator = Teleoperator()
@@ -100,6 +102,7 @@ class Controller(object):
         self.pubObservationDetectedObjects = rospy.Publisher(pubObservationDetectedObjectsTopic,
                                                              ObservationDetectedObjects, queue_size=32)
 
+        self.snapMap.start()
         self.cartographer.start()
         self.localization.start()
         self.velocity.start()
@@ -159,6 +162,7 @@ class Controller(object):
         self.observationActionCompleteResult = ObservationActionComplete.NONE
         self.subactionQueue = list()
 
+        self.snapMap.reset()
         self.cartographer.reset()
         self.localization.reset()
         self.velocity.reset()
@@ -271,8 +275,8 @@ class Controller(object):
         # Publish visualizations, if enabled, such as the pose estimates, map regions/objects, and observed objects.
         self.visualize.publish_robot_pose_estimate(self.localization)
         self.visualize.publish_pose_estimate_history(self.localization)
-        self.visualize.publish_regions(self.cartographer)
-        self.visualize.publish_objects(self.cartographer)
+        self.visualize.publish_regions(self.snapMap)
+        self.visualize.publish_objects(self.snapMap)
 
     def srv_action_move(self, request):
         """ Handle a service request for the move action.
@@ -368,9 +372,9 @@ class Controller(object):
             return ActionNavigateToRegionResponse(self.currentAction)
 
         # Basic: Assign goals to be just the center.
-        #goals = [self.cartographer.get_center_of_region(request.region_uid)]
+        #goals = [self.snapMap.get_center_of_region(request.region_uid)]
         # Random: Assign goals to be 16 random locations within the region.
-        goals = [self.cartographer.get_random_point_in_region(request.region_uid) for i in range(16)]
+        goals = [self.snapMap.get_random_point_in_region(request.region_uid) for i in range(16)]
         if None in goals:
             return ActionNavigateToRegionResponse(self.currentAction)
 
@@ -419,7 +423,7 @@ class Controller(object):
         if self.currentAction is not ActionType.NONE:
             return ActionAlignResponse(self.currentAction)
 
-        objectHeading = self.cartographer.get_object_heading(request.object_uid)
+        objectHeading = self.snapMap.get_object_heading(request.object_uid)
         if objectHeading is None:
             return ActionAlignResponse(self.currentAction)
 
@@ -427,7 +431,7 @@ class Controller(object):
         if goalHeading > np.pi:
             goalHeading -= 2.0 * float(np.pi)
 
-        goalPosition = self.cartographer.get_object_position(request.object_uid)
+        goalPosition = self.snapMap.get_object_position(request.object_uid)
         goalPosition.x += float(request.distance_from_object * np.cos(objectHeading))
         goalPosition.y += float(request.distance_from_object * np.sin(objectHeading))
 

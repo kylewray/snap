@@ -40,16 +40,16 @@ import numpy as np
 class Localization(object):
     """ A class for localizing within a known map with known regions and objects (e.g., AR tags). """
 
-    def __init__(self, cartographer):
+    def __init__(self, snapMap):
         """ The constructor for the Localization class.
 
             Parameters:
-                cartographer    --  The cartographer object to get map data (e.g., AR tags).
+                snapMap     --  The SnapMap object to get map data (e.g., AR tags).
         """
 
         self.started = False
 
-        self.cartographer = cartographer
+        self.snapMap = snapMap
 
         self.lastUpdateTime = None
         self.lastOdometryPositionEstimate = None
@@ -256,11 +256,12 @@ class Localization(object):
 
         # Check all AR tags and average their data, if in the map, to get a pose for the robot.
         for marker in msg.markers:
-            print("Marker ID: %i" % (marker.id))
             # Check if the observed AR tag is in the map. If not, continue.
-            obj = self.cartographer.get_object(marker.id)
+            obj = self.snapMap.get_object(marker.id)
             if obj is None:
                 continue
+
+            rospy.loginfo("Info[Localization.sub_ar_tags]: Detected Marker ID %i - Found a match in the map!" % (marker.id))
 
             # Get the location in the map and offset it by the observed pose. This is the
             # observed estimate of the robot position.
@@ -307,8 +308,6 @@ class Localization(object):
         #fakeLaserScan.time_increment = 0.0
         #fakeLaserScan.scan_time = 1.0 / 30.0
         #fakeLaserScan.
-        #fakeLaserScan.
-        #fakeLaserScan.
 
         #self.pubLaserScan.publish(fakeLaserScan)
 
@@ -323,7 +322,7 @@ class Localization(object):
         localization.position = self.get_position_estimate()
         localization.heading = self.get_heading_estimate()
         localization.speed = self.get_speed_estimate()
-        regionEstimate = self.cartographer.get_region_by_point(localization.position)
+        regionEstimate = self.snapMap.get_region_by_point(localization.position)
         if regionEstimate is not None:
             localization.region_uid = int(regionEstimate['uid'])
         else:

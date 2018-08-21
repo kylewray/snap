@@ -26,10 +26,15 @@ import rospy
 
 from geometry_msgs.msg import Point
 from std_msgs.msg import ColorRGBA
+from sensor_msgs.msg import Joy
+from sensor_msgs.msg import PointCloud2, LaserScan
+
+from ar_track_alvar_msgs.msg import AlvarMarkers
 
 from snap.msg import *
 from snap.srv import *
 
+import math
 import random as rnd
 import numpy as np
 
@@ -40,23 +45,31 @@ import os.path
 class Cartographer(object):
     """ A small helper class for dealing with map data. """
 
-    def __init__(self):
-        """ The constructor for the Map class. """
+    def __init__(self, snapMap, localization):
+        """ The constructor for the Cartographer class.
+
+            Parameters:
+                snapMap         --  The SnapMap object.
+                localization    --  The Localization object.
+        """
 
         self.started = False
 
         self.mapName = rospy.get_param("~map_name", "unknown")
         self.mapDirectory = rospy.get_param("~map_directory", "maps")
 
-        self.regions = list()
-        self.connections = list()
-        self.objects = list()
+        self.scans = list()
 
-        # Used to properly publish the alpha value of a color.
-        self.visualizeAlpha = float(rospy.get_param("~visualize_alpha", "0.2"))
+        self.activated = "disabled"
+        self.joyButtonTime = rospy.get_rostime()
 
-        # TODO: Publish detected objects that match the map's objects.
-        self.pubObservationObjectDetection = None
+        self.mappingCurrentPose = {'x': 0.0, 'y': 0.0, 'heading': 0.0}
+        self.mappingCurrentLaserScan = list()
+        self.mappingCurrentObjects = list()
+
+        self.subJoy = None
+        self.subARTags = None
+        self.subLaserScan = None
 
     def start(self):
         """ Start the necessary messages for cartographer. """
@@ -67,54 +80,16 @@ class Cartographer(object):
 
         rospy.loginfo("Info[Cartographer.start]: Starting cartographer sub-controller.")
 
-        self._load_map_data()
+        self._load_scans()
 
-        srvGetRegionsTopic = rospy.get_param("~cartographer_get_regions_topic", "~get_regions")
-        self.srvGetRegions = rospy.Service(srvGetRegionsTopic,
-                                           GetRegions,
-                                           self.srv_get_regions)
+        subJoyTopic = rospy.get_param("~sub_joy", "evt_joy")
+        self.subJoy = rospy.Subscriber(subJoyTopic, Joy, self.sub_joy)
 
-        srvGetRegionTopic = rospy.get_param("~cartographer_get_region_topic", "~get_region")
-        self.srvGetRegion = rospy.Service(srvGetRegionTopic,
-                                          GetRegion,
-                                          self.srv_get_region)
+        subARTagsTopic = rospy.get_param("~sub_ar_tags", "ar_pose_marker")
+        self.subARTags = rospy.Subscriber(subARTagsTopic, AlvarMarkers, self.sub_ar_tags)
 
-        srvGetRegionByPointTopic = rospy.get_param("~cartographer_get_region_by_point_topic", "~get_region_by_point")
-        self.srvGetRegionByPoint = rospy.Service(srvGetRegionByPointTopic,
-                                                 GetRegionByPoint,
-                                                 self.srv_get_region_by_point)
-
-        srvGetRegionNeighborsTopic = rospy.get_param("~cartographer_get_region_neighbors_topic",
-                                                     "~get_region_neighbors")
-        self.srvGetRegionNeighbors = rospy.Service(srvGetRegionNeighborsTopic,
-                                                   GetRegionNeighbors,
-                                                   self.srv_get_region_neighbors)
-
-        srvGetConnectionsTopic = rospy.get_param("~cartographer_get_connections_topic", "~get_connections")
-        self.srvGetConnections = rospy.Service(srvGetConnectionsTopic,
-                                               GetConnections,
-                                               self.srv_get_connections)
-
-        srvGetConnectionTopic = rospy.get_param("~cartographer_get_connection_topic", "~get_connection")
-        self.srvGetConnection = rospy.Service(srvGetConnectionTopic,
-                                              GetConnection,
-                                              self.srv_get_connection)
-
-        srvGetConnectionRegionsTopic = rospy.get_param("~cartographer_get_connection_regions_topic",
-                                                       "~get_connection_regions")
-        self.srvGetConnectionRegions = rospy.Service(srvGetConnectionRegionsTopic,
-                                                     GetConnectionRegions,
-                                                     self.srv_get_connection_regions)
-
-        srvGetObjectsTopic = rospy.get_param("~cartographer_get_objects_topic", "~get_objects")
-        self.srvGetObjects = rospy.Service(srvGetObjectsTopic,
-                                           GetObjects,
-                                           self.srv_get_objects)
-
-        srvGetObjectTopic = rospy.get_param("~cartographer_get_object_topic", "~get_object")
-        self.srvGetObject = rospy.Service(srvGetObjectTopic,
-                                          GetObject,
-                                          self.srv_get_object)
+        subLaserScanTopic = rospy.get_param("~sub_laser_scan", "scan")
+        self.subLaserScan = rospy.Subscriber(subLaserScanTopic, LaserScan, self.sub_laser_scan)
 
         self.started = True
 
@@ -123,453 +98,111 @@ class Cartographer(object):
 
         rospy.loginfo("Info[Cartographer.reset]: Resetting cartographer sub-controller.")
 
-    def _load_map_data(self):
+        self.activated = "disabled"
+        self.joyButtonTime = rospy.get_rostime()
+
+        self.mappingCurrentPose = {'x': 0.0, 'y': 0.0, 'heading': 0.0}
+        self.mappingCurrentLaserScanPoints = list()
+        self.mappingCurrentObjects = list()
+
+    def _load_scans(self):
         """ Load the map data into the variables. """
 
-        mapDataFile = os.path.join(self.mapDirectory, self.mapName + ".json")
-        with open(mapDataFile, 'r') as f:
-            data = json.load(f)
-
+        mapDataFile = os.path.join(self.mapDirectory, self.mapName + "_scans.json")
         try:
-            self.regions = data['regions']
-            self.connections = data['connections']
-            self.objects = data['objects']
+            with open(mapDataFile, 'r') as f:
+                self.scans = json.load(f)
         except:
-            rospy.logwarn("Warning[Cartographer._load_map_data]: Issues encountered loading map data.")
+            rospy.logwarn("Warning[Cartographer._load_map_data]: Failed to load the raw scans data.")
 
-    def get_regions(self):
-        """ Get the list of regions as a dictionary of information.
+    def _save_scans(self):
+        """ Load the map data into the variables. """
 
-            Returns:
-                The list of regions as a dictionary of information.
-        """
+        rospy.loginfo("Info[Cartographer._save_map_data]: Attempting to save the raw scans of the map.")
 
-        return self.regions
+        mapDataFile = os.path.join(self.mapDirectory, self.mapName + "_scans.json")
+        try:
+            with open(mapDataFile, 'w') as f:
+                json.dump(self.scans, f)
+        except:
+            rospy.logwarn("Warning[Cartographer._save_map_data]: Issues encountered saving the raw scans of the map.")
 
-    def get_region(self, regionUID):
-        """ Get the region from the region UID.
-
-            Parameters:
-                regionUID   --  The region UID to get.
-
-            Returns:
-                The region corresponding to the UID, or None otherwise.
-        """
-
-        for region in self.regions:
-            if region['uid'] == regionUID:
-                return region
-
-        return None
-
-    def get_center_of_region(self, regionUID):
-        """ Get the center of a region---that is, the average of the bounds.
+    def sub_joy(self, msg):
+        """ Receive information about the joystick from ROS.
 
             Parameters:
-                regionUID   --  The UID of the region to randomly choose a point within.
-
-            Returns:
-                The average of the bounds of the region, or None if the input is invalid.
+                msg     --  The joystick information.
         """
 
-        region = self.get_region(regionUID)
-        if region is None:
-            return None
+        # Handle button presses with a 1/2 second delay between each button press.
+        if self.joyButtonTime.to_sec() + 0.5 <= rospy.get_rostime().to_sec():
+            self.joyButtonTime = rospy.get_rostime()
 
-        point = Point()
-        point.x = float(sum([p[0] for p in region['bounds']])) / float(len(region['bounds']))
-        point.y = float(sum([p[1] for p in region['bounds']])) / float(len(region['bounds']))
+            # The "square" button activates/deactivates mapping and map correcting.
+            if msg.buttons[0] == 1:
+                if self.activated is "disabled": 
+                    self.activated = "mapping"
+                elif self.activated is "mapping": 
+                    self.activated = "correcting"
+                else:
+                    self.activated = "disabled"
 
-        return point
+                rospy.loginfo("Info[Cartographer.sub_joy]: Cartographer is currently %s." % (self.activated))
 
-    def get_random_point_in_region(self, regionUID, weightPadding=0.1):
-        """ Get a random location in a particular region. Optionally, ensure it is weighted away from edges.
+            # The "x" button adds a new scan if mapping.
+            elif msg.buttons[1] == 1 and self.activated == "mapping":
+                self.scans += [{'pose': self.mappingCurrentPose, 'points': self.mappingCurrentLaserScan, 'objects': self.mappingCurrentObjects}]
+
+                rospy.loginfo("Info[Cartographer.sub_joy]: Added a scan at (%.2f, %.2f, %.2f)!"
+                              % (self.mappingCurrentPose['x'], self.mappingCurrentPose['y'], self.mappingCurrentPose['heading']))
+
+            # The "start/option" button saves the new map.
+            elif msg.buttons[9] == 1:
+                self._save_scans()
+
+        ## If the user is correcting, then we control the scans here.
+        #if self.activated == "correcting":
+        #    print(msg.axes[1], msg.axes[0], msg.buttons[4], msg.buttons[5])
+
+    def sub_ar_tags(self, msg):
+        """ Update the current list of AR tag objects visible and their locations.
 
             Parameters:
-                regionUID       --  The UID of the region to randomly choose a point within.
-                weightPadding   --  Optionally, the amount of weight to 'pad' around the bounds.
-                                    Default is 0.1; 0.0 is totally random; 1.0 is average center of bounds.
-
-            Returns:
-                A random point in the region, or None if the input is invalid.
+                msg     --  The AlvarMarkers message data.
         """
 
-        region = self.get_region(regionUID)
-        if region is None:
-            return None
+        if not self.started:
+            rospy.logwarn("Warn[Cartographer.sub_ar_tags]: Initialization has not yet completed.")
+            return
 
-        weight = [(1.0 - weightPadding) * rnd.random() + weightPadding for p in region['bounds']]
-        denominator = sum(weight)
+        self.mappingCurrentObjects = list()
 
-        point = Point()
-        point.x = sum([p[0] * weight[i] / denominator for i, p in enumerate(region['bounds'])])
-        point.y = sum([p[1] * weight[i] / denominator for i, p in enumerate(region['bounds'])])
+        for marker in msg.markers:
+            #rospy.loginfo("Info[Cartographer.sub_ar_tags]: Detected Marker ID %i!" % (marker.id))
 
-        return point
+            # Get the location in the map and offset it by the observed pose. This is the
+            # observed estimate of the robot position.
+            self.mappingCurrentObjects += [{'uid': marker.id, 'x': marker.pose.pose.position.x, 'y': marker.pose.pose.position.y}]
 
-    def is_point_in_region(self, regionUID, point):
-        """ Check if the point provided is within the clockwise region bounds provided.
+    def sub_laser_scan(self, msg):
+        """ Update the current laser scan points. """
 
-            Parameters:
-                regionUID   --  The region UID.
-                point       --  The Point object to test.
+        if not self.started:
+            rospy.logwarn("Warn[Cartographer.sub_laser_scan]: Initialization has not yet completed.")
+            return
 
-            Returns:
-                True if the point is in the region, False otherwise.
-        """
+        #rospy.loginfo("Info[Cartographer.sub_laser_scan]: Detected laser scan!")
 
-        region = self.get_region(regionUID)
-        if region is None:
-            return False
+        # Convert laser scan ranges to a "fan" of points.
+        self.mappingCurrentLaserScan = list()
+        theta = float(msg.angle_min)
 
-        for i in range(len(region['bounds'])):
-            iPlusOne = (i + 1) % len(region['bounds'])
-            a = Point(region['bounds'][i][0], region['bounds'][i][1], 0.0)
-            b = Point(region['bounds'][iPlusOne][0], region['bounds'][iPlusOne][1], 0.0)
-            c = Point(point.x, point.y, 0.0)
+        for r in msg.ranges:
+            # Only add this point to the list of it is valid.
+            if r >= msg.range_min and r <= msg.range_max:
+                x = r * math.cos(theta)
+                y = r * math.sin(theta)
+                self.mappingCurrentLaserScan += [{'x': x, 'y': y}]
 
-            isLeft = ((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x))
-            if isLeft > 0.0:
-                return False
-
-        return True
-
-    def get_region_by_point(self, point):
-        """ Check if the point provided is within any of the regions. If so, return any such region.
-
-            Parameters:
-                point   --  The Point object to test.
-
-            Returns:
-                The region data if the point is in any region, otherwise None.
-        """
-
-        for region in self.regions:
-            if self.is_point_in_region(region['uid'], point):
-                return region
-
-        return None
-
-    def get_region_neighbors(self, regionUID):
-        """ Get the neighbors of a region, following the connections, from the connection UID.
-
-            Parameters:
-                regionUID   --  The region UID to get its neighboring connections.
-
-            Returns:
-                The neighboring regions, following the connections, of the region UID given, None on failure.
-        """
-
-        region = self.get_region(regionUID)
-        if region is None:
-            return None
-
-        neighborUIDs = set()
-        for connection in self.connections:
-            if region['uid'] in connection['region_uids']:
-                neighborUIDs |= set(connection['region_uids']) - {region['uid']}
-
-        regions = [self.get_region(uid) for uid in neighborUIDs]
-        return [r for r in regions if r is not None]
-
-    def get_connections(self):
-        """ Get the list of connections as a dictionary of information.
-
-            Returns:
-                The list of connections as a dictionary of information.
-        """
-
-        return self.connections
-
-    def get_connection(self, connectionUID):
-        """ Get the connection from the connection UID.
-
-            Parameters:
-                connectionUID   --  The connection UID to get.
-
-            Returns:
-                The connection corresponding to the UID, or None otherwise.
-        """
-
-        for con in self.connections:
-            if con['uid'] == connectionUID:
-                return con
-
-        return None
-
-    def get_connection_regions(self, connectionUID):
-        """ Get the connection region information from the connection UID.
-
-            Parameters:
-                connectionUID   --  The connection UID to get.
-
-            Returns:
-                The connection region information corresponding to the UID, or None otherwise.
-        """
-
-        con = self.get_connection(connectionUID)
-        if con is None:
-            return None
-
-        regions = [self.get_region(regionUID) for regionUID in con['region_uids']]
-
-        return regions
-
-    def get_objects(self):
-        """ Get the list of objects as a dictionary of information.
-
-            Returns:
-                The list of objects as a dictionary of information.
-        """
-
-        return self.objects
-
-    def get_object(self, objectUID):
-        """ Get the object from the object UID.
-
-            Parameters:
-                objectUID   --  The object UID to get.
-
-            Returns:
-                The object corresponding to the UID, or None otherwise.
-        """
-
-        for obj in self.objects:
-            if obj['uid'] == objectUID:
-                return obj
-
-        return None
-
-    def get_object_position(self, objectUID):
-        """ Get the object position of the object UID given.
-
-            Returns:
-                The object position as a Point object, or None if the input is invalid.
-        """
-
-        obj = self.get_object(objectUID)
-        if obj is not None:
-            return Point(obj['position'][0], obj['position'][1], 0.0)
-
-        return None
-
-    def get_object_heading(self, objectUID):
-        """ Get the object heading of the object UID given.
-
-            Returns:
-                The object heading in [-pi, pi], or None if the input is invalid.
-        """
-
-        obj = self.get_object(objectUID)
-        if obj is None:
-            return None
-
-        return float(np.clip(obj['heading'], -np.pi, np.pi))
-
-    def _convert_region_to_msg(self, region):
-        """ Convert a region to a region message for easy service definitions.
-
-            Parameters:
-                region      --  The region to convert.
-
-            Returns:
-                The region message for the region provided.
-        """
-
-        regionMsg = Region()
-        regionMsg.uid = region['uid']
-        regionMsg.name = region['name']
-        regionMsg.bounds = [Point(bound[0], bound[1], 0.0) for bound in region['bounds']]
-        regionMsg.color = ColorRGBA(region['color'][0], region['color'][1], region['color'][2], self.visualizeAlpha)
-        regionMsg.object_uids = region['object_uids']
-        return regionMsg
-
-    def _convert_connection_to_msg(self, connection):
-        """ Convert a connection to a connection message for easy service definitions.
-
-            Parameters:
-                connection  --  The connection to convert.
-
-            Returns:
-                The connection message for the connection provided.
-        """
-
-        connectionMsg = Connection()
-        connectionMsg.uid = connection['uid']
-        connectionMsg.name = connection['name']
-        connectionMsg.region_uids = connection['region_uids']
-        connectionMsg.weight = connection['weight']
-        return connectionMsg
-
-    def _convert_object_to_msg(self, obj):
-        """ Convert an object to an object message for easy service definitions.
-
-            Parameters:
-                obj     --  The object to convert.
-
-            Returns:
-                The object message for the object provided.
-        """
-
-        objMsg = Object()
-        objMsg.uid = obj['uid']
-        objMsg.name = obj['name']
-        objMsg.tag_uid = obj['tag_uid']
-        objMsg.position = Point(obj['position'][0], obj['position'][1], 0.0)
-        objMsg.heading = obj['heading']
-        objMsg.color = ColorRGBA(obj['color'][0], obj['color'][1], obj['color'][2], self.visualizeAlpha)
-        return objMsg
-
-    def srv_get_regions(self, request):
-        """ Service callback for getting the list of regions as a dictionary of information.
-
-            Parameters:
-                request     --  The GetRegionsRequest object.
-
-            Returns:
-                The GetRegionsResponse object.
-        """
-
-        regions = [self._convert_region_to_msg(region) for region in self.regions]
-        return GetRegionsResponse(regions)
-
-    def srv_get_region(self, request):
-        """ Service callback for getting the region from the region UID.
-
-            Parameters:
-                request     --  The GetRegionRequest object.
-
-            Returns:
-                The GetRegionResponse object.
-        """
-
-        regionResponse = GetRegionResponse()
-        region = self.get_region(request.uid)
-        if region is None:
-            regionResponse.exists = False
-        else:
-            regionResponse.exists = True
-            regionResponse.region = self._convert_region_to_msg(region)
-        return regionResponse
-
-    def srv_get_region_by_point(self, request):
-        """ Service callback for getting the region from a specified point.
-
-            Parameters:
-                request     --  The GetRegionByPointRequest object.
-
-            Returns:
-                The GetRegionByPointResponse object.
-        """
-
-        regionResponse = GetRegionByPointResponse()
-        region = self.get_region_by_point(request.point)
-        if region is None:
-            regionResponse.exists = False
-        else:
-            regionResponse.exists = True
-            regionResponse.region = self._convert_region_to_msg(region)
-        return regionResponse
-
-    def srv_get_region_neighbors(self, request):
-        """ Service callback for getting the list of neighboring regions as a dictionary of information.
-
-            Parameters:
-                request     --  The GetRegionNeighborsRequest object.
-
-            Returns:
-                The GetRegionNeighborsResponse object.
-        """
-
-        neighborsResponse = GetRegionNeighborsResponse()
-        regions = self.get_region_neighbors(request.uid)
-        if regions is None:
-            neighborsResponse.exists = False
-        else:
-            neighborsResponse.exists = True
-            neighborsResponse.regions = [self._convert_region_to_msg(region) for region in regions]
-        return neighborsResponse
-
-    def srv_get_connections(self, request):
-        """ Get the list of connections as a dictionary of information.
-
-            Parameters:
-                request     --  The GetConnectionsRequest object.
-
-            Returns:
-                The GetConnectionsResponse object.
-        """
-
-        connections = [self._convert_connection_to_msg(connection) for connection in self.connections]
-        return GetConnectionsResponse(connection)
-
-    def srv_get_connection(self, request):
-        """ Service callback for getting the connection from the connection UID.
-
-            Parameters:
-                request     --  The GetConnectionRequest object.
-
-            Returns:
-                The GetConnectionResponse object.
-        """
-
-        connectionResponse = GetConnectionResponse()
-        connection = self.get_connection(request.uid)
-        if connection is None:
-            connectionResponse.exists = False
-        else:
-            connectionResponse.exists = True
-            connectionResponse.connection = self._convert_connection_to_msg(connection)
-        return connectionResponse
-
-    def srv_get_connection_regions(self, request):
-        """ Service callback for getting the connection region information from the connection UID.
-
-            Parameters:
-                request     --  The GetConnectionRegionsRequest object.
-
-            Returns:
-                The GetConnectionRegionsResponse object.
-        """
-
-        connectionRegionsResponse = GetConnectionRegionsResponse()
-        regions = self.get_connection_regions(request.uid)
-        if regions is None:
-            connectionRegionsResponse.exists = False
-        else:
-            connectionRegionsResponse.exists = True
-            connectionRegionsResponse.regions = [self._convert_region_to_msg(r) for r in regions]
-        return connectionRegionsResponse
-
-    def srv_get_objects(self, request):
-        """ Get the list of objects as a dictionary of information.
-
-            Parameters:
-                request     --  The GetObjectsRequest object.
-
-            Returns:
-                The GetObjectsResponse object.
-        """
-
-        objects = [self._convert_object_to_msg(obj) for obj in self.objects]
-        return GetObjectsResponse(objects)
-
-    def srv_get_object(self, request):
-        """ Service callback for getting the object from the object UID.
-
-            Parameters:
-                request     --  The GetObjectRequest object.
-
-            Returns:
-                The GetObjectResponse object.
-        """
-
-        objectResponse = GetObjectResponse()
-        obj = self.get_object(request.uid)
-        if obj is None:
-            objectResponse.exists = False
-        else:
-            objectResponse.exists = True
-            objectResponse.object = self._convert_object_to_msg(obj)
-        return objectResponse
+            theta += float(msg.angle_increment)
 
