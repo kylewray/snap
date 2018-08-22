@@ -51,7 +51,7 @@ class Visualize(object):
         self.mapFrameID = rospy.get_param("~map_frame_id", "map")
 
         self.visualizeAlpha = float(rospy.get_param("~visualize_alpha", "0.2"))
-        self.visualizeScanSubSample = int(rospy.get_param("~visualize_scan_subsample", "10"))
+        self.visualizeScanSubsample = int(rospy.get_param("~visualize_scan_subsample", "1"))
 
         self.pubRobotPose = None
         self.pubPath = None
@@ -348,7 +348,7 @@ class Visualize(object):
 
             colorOfLaserScan = ColorRGBA(0.0, 1.0, 0.0, self.visualizeAlpha)
 
-            for i in range(0, len(scan['points']), self.visualizeScanSubSample):
+            for i in range(0, len(scan['points']), self.visualizeScanSubsample):
                 ls = scan['points'][i]
                 lsX = x + ls['x'] * cosH - ls['y'] * sinH
                 lsY = y + ls['x'] * sinH + ls['y'] * cosH

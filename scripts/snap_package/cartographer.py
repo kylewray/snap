@@ -30,6 +30,7 @@ from geometry_msgs.msg import Point
 from std_msgs.msg import ColorRGBA
 from sensor_msgs.msg import Joy
 from sensor_msgs.msg import PointCloud2, LaserScan
+from nav_msgs.msg import OccupancyGrid
 
 from ar_track_alvar_msgs.msg import AlvarMarkers
 
@@ -71,13 +72,21 @@ class Cartographer(object):
 
         self.secondsPerUpdate = 1.0 / float(rospy.get_param("~update_rate", "10.0"))
 
+        self.mapFrameID = rospy.get_param("~map_frame_id", "map")
+        self.mapResolution = float(rospy.get_param("~cartographer_map_resolution", "0.1"))
+        self.mapWidth = int(rospy.get_param("~cartographer_map_width", 600))
+        self.mapHeight = int(rospy.get_param("~cartographer_map_height", 400))
+
         self.mappingCurrentLaserScan = list()
         self.mappingCurrentObjects = list()
         self.correctingCurrentScanIndex = 0
+        self.scanSubsample = int(rospy.get_param("~cartographer_scan_subsample", "10"))
 
         self.subJoy = None
         self.subARTags = None
         self.subLaserScan = None
+
+        self.pubMap = None
 
     def start(self):
         """ Start the necessary messages for cartographer. """
@@ -98,6 +107,9 @@ class Cartographer(object):
 
         subLaserScanTopic = rospy.get_param("~sub_laser_scan", "scan")
         self.subLaserScan = rospy.Subscriber(subLaserScanTopic, LaserScan, self.sub_laser_scan)
+
+        pubMapTopic = rospy.get_param("~pub_map", "map")
+        self.pubMap = rospy.Publisher(pubMapTopic, OccupancyGrid, queue_size=8)
 
         self.started = True
 
@@ -136,6 +148,68 @@ class Cartographer(object):
             rospy.loginfo("Info[Cartographer._save_map_data]: Saved the raw scans of the map to 'maps/%s'." % (filename))
         except:
             rospy.logwarn("Warning[Cartographer._save_map_data]: Failed to save the raw scans data.")
+
+    def _compute_occupancy_grid(self):
+        """ Compute a new map (OccupancyGrid) from the current scan data.
+
+            Returns:
+                A new OccupancyGrid made by the scan data.
+        """
+
+        originX = self.mapWidth / 2.0 * self.mapResolution
+        originY = self.mapHeight / 2.0 * self.mapResolution
+
+        # Construct the basic info about the OccupancyGrid.
+        result = OccupancyGrid()
+        result.header.frame_id = self.mapFrameID
+        result.header.stamp = rospy.get_rostime()
+        result.info.resolution = self.mapResolution
+        result.info.width = self.mapWidth
+        result.info.height = self.mapHeight
+        result.info.origin.position.x = -originX
+        result.info.origin.position.y = -originY
+        result.info.origin.position.z = 0.0
+        result.info.origin.orientation.x = 0.0
+        result.info.origin.orientation.y = 0.0
+        result.info.origin.orientation.z = 0.0
+        result.info.origin.orientation.w = 1.0
+
+        # Compute the data from the laser scans. Note: 0 is freespace, 100 is occupied.
+        result.data = [100 for i in range(self.mapWidth * self.mapHeight)]
+        for scan in self.scans:
+            # We look over all scans starting at its pose.
+            x = scan['pose']['x'] + originX
+            y = scan['pose']['y'] + originY
+            heading = scan['pose']['heading']
+            cosH = math.cos(heading)
+            sinH = math.sin(heading)
+
+            for point in scan['points']:
+                # For each point in the scan, we compute the actual world frame position of this point.
+                lsX = x + point['x'] * cosH - point['y'] * sinH
+                lsY = y + point['x'] * sinH + point['y'] * cosH
+
+                # We compute the 'range' which is the distance (meters and num cells) between the pose and this position.
+                distance = math.sqrt(pow(x - lsX, 2) + pow(y - lsY, 2))
+                numCellsBetweenTheTwoPoints = distance / self.mapResolution
+
+                for weight in np.arange(0.0, 1.0, 1.0 / numCellsBetweenTheTwoPoints):
+                    # We compute a weighted point between the world frame scan pose and this world frame position.
+                    wx = float(weight) * x + (1.0 - float(weight)) * lsX
+                    wy = float(weight) * y + (1.0 - float(weight)) * lsY
+
+                    # Lastly, compute the cell coordinate (map frame) of the world frame position of this point.
+                    cwx = int(wx / self.mapResolution)
+                    cwy = int(wy / self.mapResolution)
+
+                    if cwx < 0 or cwx >= self.mapWidth or cwy < 0 or cwy >= self.mapHeight:
+                        #rospy.logwarn("Warn[Cartographer._compute_occupancy_grid]: Cell out of bounds.")
+                        continue
+
+                    # This is a freespace (i.e., probability 0 of occupancy).
+                    result.data[cwy * self.mapWidth + cwx] = 0
+
+        return result
 
     def get_scans(self):
         """ Get the laser and object scans.
@@ -214,6 +288,12 @@ class Cartographer(object):
                 elif self.scans[self.correctingCurrentScanIndex]['pose']['heading'] <= -np.pi:
                     self.scans[self.correctingCurrentScanIndex]['pose']['heading'] += 2.0 * np.pi
 
+        # If the user is mapping or correcting, then we can publish a new map.
+        if self.activated == "mapping" or self.activated == "correcting":
+            # The "big center button" publishes a new map.
+            if msg.buttons[13] == 1:
+                self.pubMap.publish(self._compute_occupancy_grid())
+
     def sub_ar_tags(self, msg):
         """ Update the current list of AR tag objects visible and their locations.
 
@@ -253,9 +333,9 @@ class Cartographer(object):
         self.mappingCurrentLaserScan = list()
         theta = float(msg.angle_min)
 
-        for r in msg.ranges:
-            # Only add this point to the list of it is valid.
-            if r >= msg.range_min and r <= msg.range_max:
+        for i, r in enumerate(msg.ranges):
+            # Only add this point to the list of it is valid, and if it is one of the subsampled ones.
+            if r >= msg.range_min and r <= msg.range_max and i % self.scanSubsample == 0:
                 x = r * math.cos(theta)
                 y = r * math.sin(theta)
                 self.mappingCurrentLaserScan += [{'x': x, 'y': y}]
