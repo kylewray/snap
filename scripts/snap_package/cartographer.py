@@ -24,6 +24,8 @@
 
 import rospy
 
+from tf.transformations import euler_from_quaternion
+
 from geometry_msgs.msg import Point
 from std_msgs.msg import ColorRGBA
 from sensor_msgs.msg import Joy
@@ -58,14 +60,20 @@ class Cartographer(object):
         self.mapName = rospy.get_param("~map_name", "unknown")
         self.mapDirectory = rospy.get_param("~map_directory", "maps")
 
+        self.snapMap = snapMap
+        self.localization = localization
+
         self.scans = list()
 
         self.activated = "disabled"
         self.joyButtonTime = rospy.get_rostime()
+        self.joyDeadzone = float(rospy.get_param("~joy_deadzone", "0.1"))
 
-        self.mappingCurrentPose = {'x': 0.0, 'y': 0.0, 'heading': 0.0}
+        self.secondsPerUpdate = 1.0 / float(rospy.get_param("~update_rate", "10.0"))
+
         self.mappingCurrentLaserScan = list()
         self.mappingCurrentObjects = list()
+        self.correctingCurrentScanIndex = 0
 
         self.subJoy = None
         self.subARTags = None
@@ -101,31 +109,51 @@ class Cartographer(object):
         self.activated = "disabled"
         self.joyButtonTime = rospy.get_rostime()
 
-        self.mappingCurrentPose = {'x': 0.0, 'y': 0.0, 'heading': 0.0}
         self.mappingCurrentLaserScanPoints = list()
         self.mappingCurrentObjects = list()
+        self.correctingCurrentScanIndex = 0
 
     def _load_scans(self):
         """ Load the map data into the variables. """
 
-        mapDataFile = os.path.join(self.mapDirectory, self.mapName + "_scans.json")
+        filename = self.mapName + "_scans.json"
+        mapDataFile = os.path.join(self.mapDirectory, filename)
         try:
             with open(mapDataFile, 'r') as f:
                 self.scans = json.load(f)
+            rospy.loginfo("Info[Cartographer._load_map_data]: Loaded the raw scans of the map from 'maps/%s'." % (filename))
         except:
             rospy.logwarn("Warning[Cartographer._load_map_data]: Failed to load the raw scans data.")
 
     def _save_scans(self):
         """ Load the map data into the variables. """
 
-        rospy.loginfo("Info[Cartographer._save_map_data]: Attempting to save the raw scans of the map.")
-
-        mapDataFile = os.path.join(self.mapDirectory, self.mapName + "_scans.json")
+        filename = self.mapName + "_scans.json"
+        mapDataFile = os.path.join(self.mapDirectory, filename)
         try:
             with open(mapDataFile, 'w') as f:
                 json.dump(self.scans, f)
+            rospy.loginfo("Info[Cartographer._save_map_data]: Saved the raw scans of the map to 'maps/%s'." % (filename))
         except:
-            rospy.logwarn("Warning[Cartographer._save_map_data]: Issues encountered saving the raw scans of the map.")
+            rospy.logwarn("Warning[Cartographer._save_map_data]: Failed to save the raw scans data.")
+
+    def get_scans(self):
+        """ Get the laser and object scans.
+
+            Returns:
+                A list of dictionaries with scan data.
+        """
+
+        return self.scans
+
+    def get_correcting_current_scan_index(self):
+        """ Returns the current scan index when in 'correcting' mode.
+
+            Returns:
+                This current scan index from the self.scans list.
+        """
+
+        return self.correctingCurrentScanIndex
 
     def sub_joy(self, msg):
         """ Receive information about the joystick from ROS.
@@ -151,18 +179,40 @@ class Cartographer(object):
 
             # The "x" button adds a new scan if mapping.
             elif msg.buttons[1] == 1 and self.activated == "mapping":
-                self.scans += [{'pose': self.mappingCurrentPose, 'points': self.mappingCurrentLaserScan, 'objects': self.mappingCurrentObjects}]
+                position = self.localization.get_position_estimate()
+                mappingCurrentPose = {'x': position.x, 'y': position.y, 'heading': self.localization.get_heading_estimate()}
+                self.scans += [{'pose': mappingCurrentPose, 'points': self.mappingCurrentLaserScan,
+                                'objects': self.mappingCurrentObjects}]
+                self.correctingCurrentScanIndex = len(self.scans) - 1
 
                 rospy.loginfo("Info[Cartographer.sub_joy]: Added a scan at (%.2f, %.2f, %.2f)!"
-                              % (self.mappingCurrentPose['x'], self.mappingCurrentPose['y'], self.mappingCurrentPose['heading']))
+                              % (mappingCurrentPose['x'], mappingCurrentPose['y'], mappingCurrentPose['heading']))
 
             # The "start/option" button saves the new map.
             elif msg.buttons[9] == 1:
                 self._save_scans()
 
-        ## If the user is correcting, then we control the scans here.
-        #if self.activated == "correcting":
-        #    print(msg.axes[1], msg.axes[0], msg.buttons[4], msg.buttons[5])
+        # If the user is correcting, then we control the scans here.
+        if self.activated == "correcting":
+            #  The "L1" and "R1" buttons decrement and increment the selected scan to correct, respectively.
+            if msg.buttons[4] == 1:
+                self.correctingCurrentScanIndex = (self.correctingCurrentScanIndex - 1) % len(self.scans)
+            elif msg.buttons[5] == 1:
+                self.correctingCurrentScanIndex = (self.correctingCurrentScanIndex + 1) % len(self.scans)
+
+            # The "left analog stick" moves the selected scan.
+            if abs(msg.axes[0]) >= self.joyDeadzone:
+                self.scans[self.correctingCurrentScanIndex]['pose']['x'] -= msg.axes[0] * self.secondsPerUpdate * 0.1
+            if abs(msg.axes[1]) >= self.joyDeadzone:
+                self.scans[self.correctingCurrentScanIndex]['pose']['y'] += msg.axes[1] * self.secondsPerUpdate * 0.1
+
+            # The "right analog stick" rotates the selected scan.
+            if abs(msg.axes[2]) >= self.joyDeadzone:
+                self.scans[self.correctingCurrentScanIndex]['pose']['heading'] += msg.axes[2] * self.secondsPerUpdate * 0.1
+                if self.scans[self.correctingCurrentScanIndex]['pose']['heading'] >= np.pi:
+                    self.scans[self.correctingCurrentScanIndex]['pose']['heading'] -= 2.0 * np.pi
+                elif self.scans[self.correctingCurrentScanIndex]['pose']['heading'] <= -np.pi:
+                    self.scans[self.correctingCurrentScanIndex]['pose']['heading'] += 2.0 * np.pi
 
     def sub_ar_tags(self, msg):
         """ Update the current list of AR tag objects visible and their locations.
@@ -180,9 +230,15 @@ class Cartographer(object):
         for marker in msg.markers:
             #rospy.loginfo("Info[Cartographer.sub_ar_tags]: Detected Marker ID %i!" % (marker.id))
 
-            # Get the location in the map and offset it by the observed pose. This is the
-            # observed estimate of the robot position.
-            self.mappingCurrentObjects += [{'uid': marker.id, 'x': marker.pose.pose.position.x, 'y': marker.pose.pose.position.y}]
+            # Note: This is assuming the camera frame transform z-axis the world frame z-axis.
+            roll, pitch, yaw = euler_from_quaternion([marker.pose.pose.orientation.x,
+                                                      marker.pose.pose.orientation.y,
+                                                      marker.pose.pose.orientation.z,
+                                                      marker.pose.pose.orientation.w])
+
+            self.mappingCurrentObjects += [{'uid': marker.id, 'heading': yaw,
+                                            'x': marker.pose.pose.position.x,
+                                            'y': marker.pose.pose.position.y}]
 
     def sub_laser_scan(self, msg):
         """ Update the current laser scan points. """

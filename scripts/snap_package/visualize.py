@@ -51,11 +51,13 @@ class Visualize(object):
         self.mapFrameID = rospy.get_param("~map_frame_id", "map")
 
         self.visualizeAlpha = float(rospy.get_param("~visualize_alpha", "0.2"))
+        self.visualizeScanSubSample = int(rospy.get_param("~visualize_scan_subsample", "10"))
 
         self.pubRobotPose = None
         self.pubPath = None
         self.pubRegions = None
         self.pubObjects = None
+        self.pubScans = None
 
     def start(self):
         """ Start the necessary messages for visualization. """
@@ -69,14 +71,17 @@ class Visualize(object):
         pubRobotPoseTopic = rospy.get_param("~pub_visualize_robot_pose", "/initialpose")
         self.pubRobotPose = rospy.Publisher(pubRobotPoseTopic, PoseWithCovarianceStamped, queue_size=32)
 
-        pubPathTopic = rospy.get_param("~pub_visualize_path", "path")
+        pubPathTopic = rospy.get_param("~pub_visualize_path", "~/visualize/path")
         self.pubPath = rospy.Publisher(pubPathTopic, Path, queue_size=32)
 
-        pubRegionsTopic = rospy.get_param("~pub_visualize_regions", "regions")
+        pubRegionsTopic = rospy.get_param("~pub_visualize_regions", "~/visualize/regions")
         self.pubRegions = rospy.Publisher(pubRegionsTopic, MarkerArray, queue_size=32)
 
-        pubObjectsTopic = rospy.get_param("~pub_visualize_objects", "objects")
+        pubObjectsTopic = rospy.get_param("~pub_visualize_objects", "~/visualize/objects")
         self.pubObjects = rospy.Publisher(pubObjectsTopic, MarkerArray, queue_size=32)
+
+        pubScansTopic = rospy.get_param("~pub_visualize_scans", "~/visualize/scans")
+        self.pubScans = rospy.Publisher(pubScansTopic, MarkerArray, queue_size=32)
 
         self.started = True
 
@@ -172,7 +177,7 @@ class Visualize(object):
             regionMarker.header.frame_id = self.mapFrameID
             regionMarker.header.stamp = rospy.get_rostime()
             regionMarker.ns = "~"
-            regionMarker.id = 1000 + region['uid']
+            regionMarker.id = 100 + region['uid']
             regionMarker.type = Marker.TRIANGLE_LIST
             regionMarker.action = Marker.ADD
             regionMarker.pose.position.x = 0.0
@@ -226,7 +231,7 @@ class Visualize(object):
             objectMarker.header.frame_id = self.mapFrameID
             objectMarker.header.stamp = rospy.get_rostime()
             objectMarker.ns = "~"
-            objectMarker.id = 10000 + obj['uid']
+            objectMarker.id = 1000 + obj['uid']
             objectMarker.type = Marker.TRIANGLE_LIST
             objectMarker.action = Marker.ADD
             objectMarker.pose.position.x = 0.0
@@ -257,4 +262,139 @@ class Visualize(object):
             objectMarkers.markers += [objectMarker]
 
         self.pubObjects.publish(objectMarkers)
+
+    def publish_scans(self, cartographer):
+        """ Publish the scans (both laser and object) for mapping and map correcting.
+
+            Parameters:
+                cartographer    --  The Cartographer object that contains new scan data.
+        """
+
+        if not self.started:
+            rospy.logwarn("Warn[Visualize.publish_scans]: Visualize has not yet been started.")
+            return
+
+        scanMarkers = MarkerArray()
+
+        for scanUID, scan in enumerate(cartographer.get_scans()):
+            # Create the pose marker for the scan.
+            x = scan['pose']['x']
+            y = scan['pose']['y']
+            heading = scan['pose']['heading']
+            cosH = math.cos(heading)
+            sinH = math.sin(heading)
+
+            poseMarker = Marker()
+            poseMarker.header.frame_id = self.mapFrameID
+            poseMarker.header.stamp = rospy.get_rostime()
+            poseMarker.ns = "~"
+            poseMarker.id = 10000 + scanUID * 3 + 0
+            poseMarker.type = Marker.TRIANGLE_LIST
+            poseMarker.action = Marker.ADD
+            poseMarker.pose.position.x = 0.0
+            poseMarker.pose.position.y = 0.0
+            poseMarker.pose.position.z = 0.0
+            poseMarker.pose.orientation.x = 0.0
+            poseMarker.pose.orientation.y = 0.0
+            poseMarker.pose.orientation.z = 0.0
+            poseMarker.pose.orientation.w = 1.0
+            poseMarker.scale.x = 1.0
+            poseMarker.scale.y = 1.0
+            poseMarker.scale.z = 1.0
+            poseMarker.color.a = 1.0
+            poseMarker.color.r = 1.0
+            poseMarker.color.g = 1.0
+            poseMarker.color.b = 1.0
+
+            if scanUID == cartographer.get_correcting_current_scan_index():
+                scaleOfPose = 0.2
+                colorOfPose = ColorRGBA(1.0, 1.0, 0.0, self.visualizeAlpha)
+            else:
+                scaleOfPose = 0.1
+                colorOfPose = ColorRGBA(0.0, 0.0, 0.0, self.visualizeAlpha)
+
+            poseMarker.points += [Point(x + scaleOfPose * np.cos(heading - np.pi / 2.0),
+                                        y + scaleOfPose * np.sin(heading - np.pi / 2.0), 0.2)]
+            poseMarker.points += [Point(x + scaleOfPose * np.cos(heading),
+                                        y + scaleOfPose * np.sin(heading), 0.2)]
+            poseMarker.points += [Point(x + scaleOfPose * np.cos(heading + np.pi / 2.0),
+                                        y + scaleOfPose * np.sin(heading + np.pi / 2.0), 0.2)]
+            poseMarker.colors = [colorOfPose for i in range(3)]
+
+            scanMarkers.markers += [poseMarker]
+
+            # Create the laser scan markers.
+            laserScanMarker = Marker()
+            laserScanMarker.header.frame_id = self.mapFrameID
+            laserScanMarker.header.stamp = rospy.get_rostime()
+            laserScanMarker.ns = "~"
+            laserScanMarker.id = 10000 + scanUID * 3 + 1
+            laserScanMarker.type = Marker.POINTS
+            laserScanMarker.action = Marker.ADD
+            laserScanMarker.pose.position.x = 0.0
+            laserScanMarker.pose.position.y = 0.0
+            laserScanMarker.pose.position.z = 0.0
+            laserScanMarker.pose.orientation.x = 0.0
+            laserScanMarker.pose.orientation.y = 0.0
+            laserScanMarker.pose.orientation.z = 0.0
+            laserScanMarker.pose.orientation.w = 1.0
+            laserScanMarker.scale.x = 0.05
+            laserScanMarker.scale.y = 0.05
+            laserScanMarker.scale.z = 0.05
+            laserScanMarker.color.a = 1.0
+            laserScanMarker.color.r = 1.0
+            laserScanMarker.color.g = 1.0
+            laserScanMarker.color.b = 1.0
+
+            colorOfLaserScan = ColorRGBA(0.0, 1.0, 0.0, self.visualizeAlpha)
+
+            for i in range(0, len(scan['points']), self.visualizeScanSubSample):
+                ls = scan['points'][i]
+                lsX = x + ls['x'] * cosH - ls['y'] * sinH
+                lsY = y + ls['x'] * sinH + ls['y'] * cosH
+                laserScanMarker.points += [Point(lsX, lsY, 0.2)]
+            laserScanMarker.colors = [colorOfLaserScan for i in range(len(laserScanMarker.points))]
+
+            scanMarkers.markers += [laserScanMarker]
+
+            # Create the object scan markers.
+            objectScanMarker = Marker()
+            objectScanMarker.header.frame_id = self.mapFrameID
+            objectScanMarker.header.stamp = rospy.get_rostime()
+            objectScanMarker.ns = "~"
+            objectScanMarker.id = 10000 + scanUID * 3 + 2
+            objectScanMarker.type = Marker.TRIANGLE_LIST
+            objectScanMarker.action = Marker.ADD
+            objectScanMarker.pose.position.x = 0.0
+            objectScanMarker.pose.position.y = 0.0
+            objectScanMarker.pose.position.z = 0.0
+            objectScanMarker.pose.orientation.x = 0.0
+            objectScanMarker.pose.orientation.y = 0.0
+            objectScanMarker.pose.orientation.z = 0.0
+            objectScanMarker.pose.orientation.w = 1.0
+            objectScanMarker.scale.x = 1.0
+            objectScanMarker.scale.y = 1.0
+            objectScanMarker.scale.z = 1.0
+            objectScanMarker.color.a = 1.0
+            objectScanMarker.color.r = 1.0
+            objectScanMarker.color.g = 1.0
+            objectScanMarker.color.b = 1.0
+
+            colorOfObjectScan = ColorRGBA(0.0, 1.0, 1.0, self.visualizeAlpha)
+
+            for i, os in enumerate(scan['objects']):
+                osX = x + os['x'] * cosH - os['y'] * sinH
+                osY = y + os['x'] * sinH + os['y'] * cosH
+                osH = heading + os['heading'] - np.pi / 2.0
+                objectScanMarker.points += [Point(osX + 0.2 * np.cos(osH - np.pi / 2.0),
+                                                  osY + 0.2 * np.sin(osH - np.pi / 2.0), 0.2)]
+                objectScanMarker.points += [Point(osX + 0.2 * np.cos(osH),
+                                                  osY + 0.2 * np.sin(osH), 0.2)]
+                objectScanMarker.points += [Point(osX + 0.2 * np.cos(osH + np.pi / 2.0),
+                                                  osY + 0.2 * np.sin(osH + np.pi / 2.0), 0.2)]
+            objectScanMarker.colors += [colorOfObjectScan for i in range(len(objectScanMarker.points))]
+
+            scanMarkers.markers += [objectScanMarker]
+
+        self.pubScans.publish(scanMarkers)
 

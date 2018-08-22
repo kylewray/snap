@@ -246,6 +246,8 @@ class Localization(object):
                 msg     --  The AlvarMarkers message data.
         """
 
+        return  # TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+
         if not self.started:
             rospy.logwarn("Warn[Localization.sub_ar_tags]: Initialization has not yet completed.")
             return

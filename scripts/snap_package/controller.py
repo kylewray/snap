@@ -277,6 +277,7 @@ class Controller(object):
         self.visualize.publish_pose_estimate_history(self.localization)
         self.visualize.publish_regions(self.snapMap)
         self.visualize.publish_objects(self.snapMap)
+        self.visualize.publish_scans(self.cartographer)
 
     def srv_action_move(self, request):
         """ Handle a service request for the move action.

@@ -42,7 +42,7 @@ class Teleoperator(object):
 
         self.maxTeleoperatorSpeed = float(rospy.get_param("~max_teleoperator_speed", "0.4"))
         self.maxTeleoperatorHeading = float(rospy.get_param("~max_teleoperator_heading", str(np.pi / 2.0)))
-        self.teleoperatorJoyDeadzone = float(rospy.get_param("~joy_deadzone", "0.1"))
+        self.joyDeadzone = float(rospy.get_param("~joy_deadzone", "0.1"))
 
         self.joyDesiredLongitudinal = 0.0
         self.joyDesiredLateral = 0.0
@@ -102,12 +102,12 @@ class Teleoperator(object):
         if not self.activated:
             return
 
-        if abs(self.joyDesiredLongitudinal) >= self.teleoperatorJoyDeadzone:
+        if abs(self.joyDesiredLongitudinal) >= self.joyDeadzone:
             desiredSpeed = self.joyDesiredLongitudinal * self.maxTeleoperatorSpeed
         else:
             desiredSpeed = 0.0
 
-        if abs(self.joyDesiredLateral) >= self.teleoperatorJoyDeadzone:
+        if abs(self.joyDesiredLateral) >= self.joyDeadzone:
             desiredHeading = localization.get_heading_estimate() + self.joyDesiredLateral * self.maxTeleoperatorHeading
         else:
             desiredHeading = localization.get_heading_estimate()

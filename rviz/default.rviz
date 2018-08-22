@@ -26,7 +26,7 @@ Panels:
     Experimental: false
     Name: Time
     SyncMode: 0
-    SyncSource: LaserScan
+    SyncSource: ""
 Visualization Manager:
   Class: ""
   Displays:
@@ -111,7 +111,7 @@ Visualization Manager:
       Radius: 0.0299999993
       Shaft Diameter: 0.100000001
       Shaft Length: 0.100000001
-      Topic: /path
+      Topic: /visualize/path
       Unreliable: false
       Value: true
     - Alpha: 0.5
@@ -149,7 +149,7 @@ Visualization Manager:
       Value: true
     - Class: rviz/MarkerArray
       Enabled: true
-      Marker Topic: /regions
+      Marker Topic: /visualize/regions
       Name: MarkerArray
       Namespaces:
         ~: true
@@ -157,19 +157,18 @@ Visualization Manager:
       Value: true
     - Class: rviz/MarkerArray
       Enabled: true
-      Marker Topic: /objects
+      Marker Topic: /visualize/objects
       Name: MarkerArray
       Namespaces:
         ~: true
       Queue Size: 100
       Value: true
-    - Class: rviz/Marker
+    - Class: rviz/MarkerArray
       Enabled: true
-      Marker Topic: /ARmarker_points
-      Name: Marker
+      Marker Topic: /visualize/scans
+      Name: MarkerArray
       Namespaces:
-        3dpts: true
-        arrow: true
+        ~: true
       Queue Size: 100
       Value: true
     - Alpha: 1
@@ -182,7 +181,7 @@ Visualization Manager:
       Channel Name: intensity
       Class: rviz/LaserScan
       Color: 255; 255; 255
-      Color Transformer: Intensity
+      Color Transformer: ""
       Decay Time: 0
       Enabled: true
       Invert Rainbow: false
@@ -191,7 +190,7 @@ Visualization Manager:
       Min Color: 0; 0; 0
       Min Intensity: 0
       Name: LaserScan
-      Position Transformer: XYZ
+      Position Transformer: ""
       Queue Size: 10
       Selectable: true
       Size (Pixels): 3
@@ -201,6 +200,14 @@ Visualization Manager:
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
+      Value: true
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /ARmarker_points
+      Name: Marker
+      Namespaces:
+        {}
+      Queue Size: 100
       Value: true
   Enabled: true
   Global Options:
