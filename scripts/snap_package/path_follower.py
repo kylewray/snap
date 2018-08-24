@@ -200,7 +200,6 @@ class PathFollower(object):
 
         endOfPath = Point(self.path[-1].pose.position.x, self.path[-1].pose.position.y, 0.0)
         distanceToNearestGoal = self._compute_distance_to_nearest_goal(endOfPath)
-        print(self.maxPathListSize, len(self.path), endOfPath.x, endOfPath.y, "versus", distanceToNearestGoal)
 
         return distanceToNearestGoal <= 1.0
 

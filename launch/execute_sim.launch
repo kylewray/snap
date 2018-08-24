@@ -2,7 +2,7 @@
 <launch>
 <!-- <param name="/use_sim_time" value="true" /> -->
 
-  <arg name="map_short_name" default="umass" />
+  <arg name="map_short_name" default="clean_slate" />
   <arg name="map_directory" default="$(find snap)/maps" />
   <arg name="map_name" default="$(arg map_directory)/$(arg map_short_name).yaml" />
   <node pkg="map_server" type="map_server" name="map_server" output="screen" args="$(arg map_name)" />
@@ -12,13 +12,11 @@
   </node>
 
   <include file="$(find snap)/launch/kobuki_sim.launch" />
+  <!--include file="$(find snap)/launch/vision_kinect.launch" /--> <!-- Note: Enable for debugging vision. -->
   <include file="$(find snap)/launch/autonomy.launch">
     <arg name="map_short_name" default="$(arg map_short_name)" />
     <arg name="map_directory" default="$(arg map_directory)" />
   </include>
-
-  <!-- TODO: Remove once debugging is complete. -->
-  <include file="$(find snap)/launch/vision_kinect.launch" />
 
   <node name="rviz" pkg="rviz" type="rviz" args="-d $(find snap)/rviz/default.rviz" />
 

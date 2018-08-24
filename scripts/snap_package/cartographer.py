@@ -44,6 +44,8 @@ import numpy as np
 import json
 import os.path
 
+from PIL import Image
+
 
 class Cartographer(object):
     """ A small helper class for dealing with map data. """
@@ -67,8 +69,8 @@ class Cartographer(object):
         self.scans = list()
 
         self.activated = "disabled"
-        self.joyButtonTime = rospy.get_rostime()
         self.joyDeadzone = float(rospy.get_param("~joy_deadzone", "0.1"))
+        self.joyPreviousButtons = [0 for i in range(16)]
 
         self.secondsPerUpdate = 1.0 / float(rospy.get_param("~update_rate", "10.0"))
 
@@ -76,6 +78,8 @@ class Cartographer(object):
         self.mapResolution = float(rospy.get_param("~cartographer_map_resolution", "0.1"))
         self.mapWidth = int(rospy.get_param("~cartographer_map_width", 600))
         self.mapHeight = int(rospy.get_param("~cartographer_map_height", 400))
+        self.mapOriginX = self.mapWidth / 2.0 * self.mapResolution
+        self.mapOriginY = self.mapHeight / 2.0 * self.mapResolution
 
         self.mappingCurrentLaserScan = list()
         self.mappingCurrentObjects = list()
@@ -119,7 +123,6 @@ class Cartographer(object):
         rospy.loginfo("Info[Cartographer.reset]: Resetting cartographer sub-controller.")
 
         self.activated = "disabled"
-        self.joyButtonTime = rospy.get_rostime()
 
         self.mappingCurrentLaserScanPoints = list()
         self.mappingCurrentObjects = list()
@@ -129,57 +132,121 @@ class Cartographer(object):
         """ Load the map data into the variables. """
 
         filename = self.mapName + "_scans.json"
-        mapDataFile = os.path.join(self.mapDirectory, filename)
+        mapScansFile = os.path.join(self.mapDirectory, filename)
         try:
-            with open(mapDataFile, 'r') as f:
+            with open(mapScansFile, 'r') as f:
                 self.scans = json.load(f)
             rospy.loginfo("Info[Cartographer._load_map_data]: Loaded the raw scans of the map from 'maps/%s'." % (filename))
         except:
             rospy.logwarn("Warning[Cartographer._load_map_data]: Failed to load the raw scans data.")
 
     def _save_scans(self):
-        """ Load the map data into the variables. """
+        """ Save the map data into the variables. """
 
         filename = self.mapName + "_scans.json"
-        mapDataFile = os.path.join(self.mapDirectory, filename)
+        mapScansFile = os.path.join(self.mapDirectory, filename)
         try:
-            with open(mapDataFile, 'w') as f:
+            with open(mapScansFile, 'w') as f:
                 json.dump(self.scans, f)
             rospy.loginfo("Info[Cartographer._save_map_data]: Saved the raw scans of the map to 'maps/%s'." % (filename))
         except:
             rospy.logwarn("Warning[Cartographer._save_map_data]: Failed to save the raw scans data.")
 
-    def _compute_occupancy_grid(self):
-        """ Compute a new map (OccupancyGrid) from the current scan data.
+    def _save_map_data_as_yaml(self):
+        """ Save the YAML file for the new map. """
+
+        filename = self.mapName + "_new.yaml"
+        mapYAMLFile = os.path.join(self.mapDirectory, filename)
+        try:
+            with open(mapYAMLFile, 'w') as f:
+                f.write("image: %s_new.png\n" % (self.mapName))
+                f.write("resolution: %.6f\n" % (self.mapResolution))
+                f.write("origin: [%.3f, %.3f, %.3f]\n" % (-self.mapOriginX, -self.mapOriginY, 0.0))
+                f.write("occupied_thresh: 0.65\n")
+                f.write("free_thresh: 0.196\n")
+                f.write("negate: 0")
+            rospy.loginfo("Info[Cartographer._save_map_data_as_yaml]: Saved the new map data to 'maps/%s'." % (filename))
+        except:
+            rospy.logwarn("Warning[Cartographer._save_map_data_as_yaml]: Failed to save the new map data.")
+
+    def _save_occupancy_grid_as_image(self):
+        """ Save the new occupancy grid to an image. """
+
+        filename = self.mapName + "_new.png"
+        mapImageFile = os.path.join(self.mapDirectory, filename)
+
+        occupancyGridData = self._compute_occupancy_grid_data()
+        data = [int(float(100 - occupancyGridData[i]) / 100.0) for i in range(len(occupancyGridData))]
+
+        try:
+            img = Image.new('1', (self.mapWidth, self.mapHeight))
+            img.putdata(data)
+            img = img.transpose(Image.FLIP_TOP_BOTTOM)
+            img.save(mapImageFile)
+            rospy.loginfo("Info[Cartographer._save_occupancy_grid_as_image]: Saved the new image of the map to 'maps/%s'." % (filename))
+        except:
+            rospy.logwarn("Warning[Cartographer._save_occupancy_grid_as_image]: Failed to save the new image of the map.")
+
+    def _save_map_data_as_json(self):
+        """ Save the JSON file for the new map. """
+
+        filename = self.mapName + "_new.json"
+        mapJSONFile = os.path.join(self.mapDirectory, filename)
+        try:
+            with open(mapJSONFile, 'w') as f:
+                # Create a dictionary mapping object UIDs to a list of poses.
+                objectDict = dict()
+                for scan in self.scans:
+                    x = scan['pose']['x']
+                    y = scan['pose']['y']
+                    heading = scan['pose']['heading']
+                    cosH = math.cos(heading)
+                    sinH = math.sin(heading)
+
+                    for obj in scan['objects']:
+                        objUID = obj['uid']
+                        objX = x + obj['x'] * cosH - obj['y'] * sinH
+                        objY = y + obj['x'] * sinH + obj['y'] * cosH
+                        objH = heading + obj['heading'] - np.pi / 2.0
+
+                        try:
+                            objectDict[objUID]['x'] += [objX]
+                            objectDict[objUID]['y'] += [objY]
+                            objectDict[objUID]['heading'] += [objH]
+                        except KeyError:
+                            objectDict[objUID] = {'x': [objX], 'y': [objY], 'heading': [objH]}
+
+                # Perform averaging over x, y, and heading observations.
+                objectList = list()
+                for uid, xyHeadingLists in objectDict.items():
+                    objectList += [{'uid': uid,
+                                    'name': "Unknown",
+                                    'tag_uid': uid,
+                                    'position': [sum(objectDict[uid]['x']) / len(objectDict[uid]['x']),
+                                                    sum(objectDict[uid]['y']) / len(objectDict[uid]['y'])],
+                                    'heading': sum(objectDict[uid]['heading']) / len(objectDict[uid]['heading']),
+                                    'color': [rnd.random(), rnd.random(), rnd.random()]}]
+
+                # Write them all to this file. There are no regions or connections yet, so this is empty.
+                data = {'regions': list(), 'connections': list(), 'objects': objectList}
+                json.dump(data, f)
+            rospy.loginfo("Info[Cartographer._save_map_data_as_json]: Saved the new 'snap map' data to 'maps/%s'." % (filename))
+        except:
+            rospy.logwarn("Warning[Cartographer._save_map_data_as_json]: Failed to save the new 'snap map' data.")
+
+    def _compute_occupancy_grid_data(self):
+        """ Compute the raw occupancy grid data.
 
             Returns:
-                A new OccupancyGrid made by the scan data.
+                The raw occupancy grid data as a list with 0 denoting freespace and 100 denoting an occupied space.
         """
 
-        originX = self.mapWidth / 2.0 * self.mapResolution
-        originY = self.mapHeight / 2.0 * self.mapResolution
-
-        # Construct the basic info about the OccupancyGrid.
-        result = OccupancyGrid()
-        result.header.frame_id = self.mapFrameID
-        result.header.stamp = rospy.get_rostime()
-        result.info.resolution = self.mapResolution
-        result.info.width = self.mapWidth
-        result.info.height = self.mapHeight
-        result.info.origin.position.x = -originX
-        result.info.origin.position.y = -originY
-        result.info.origin.position.z = 0.0
-        result.info.origin.orientation.x = 0.0
-        result.info.origin.orientation.y = 0.0
-        result.info.origin.orientation.z = 0.0
-        result.info.origin.orientation.w = 1.0
-
         # Compute the data from the laser scans. Note: 0 is freespace, 100 is occupied.
-        result.data = [100 for i in range(self.mapWidth * self.mapHeight)]
+        data = [100 for i in range(self.mapWidth * self.mapHeight)]
         for scan in self.scans:
             # We look over all scans starting at its pose.
-            x = scan['pose']['x'] + originX
-            y = scan['pose']['y'] + originY
+            x = scan['pose']['x'] + self.mapOriginX
+            y = scan['pose']['y'] + self.mapOriginY
             heading = scan['pose']['heading']
             cosH = math.cos(heading)
             sinH = math.sin(heading)
@@ -207,7 +274,32 @@ class Cartographer(object):
                         continue
 
                     # This is a freespace (i.e., probability 0 of occupancy).
-                    result.data[cwy * self.mapWidth + cwx] = 0
+                    data[cwy * self.mapWidth + cwx] = 0
+
+        return data
+
+    def _compute_occupancy_grid(self):
+        """ Compute a new map (OccupancyGrid) from the current scan data.
+
+            Returns:
+                A new OccupancyGrid made by the scan data.
+        """
+
+        # Construct the basic info about the OccupancyGrid.
+        result = OccupancyGrid()
+        result.header.frame_id = self.mapFrameID
+        result.header.stamp = rospy.get_rostime()
+        result.info.resolution = self.mapResolution
+        result.info.width = self.mapWidth
+        result.info.height = self.mapHeight
+        result.info.origin.position.x = -self.mapOriginX
+        result.info.origin.position.y = -self.mapOriginY
+        result.info.origin.position.z = 0.0
+        result.info.origin.orientation.x = 0.0
+        result.info.origin.orientation.y = 0.0
+        result.info.origin.orientation.z = 0.0
+        result.info.origin.orientation.w = 1.0
+        result.data = self._compute_occupancy_grid_data()
 
         return result
 
@@ -236,43 +328,60 @@ class Cartographer(object):
                 msg     --  The joystick information.
         """
 
-        # Handle button presses with a 1/2 second delay between each button press.
-        if self.joyButtonTime.to_sec() + 0.5 <= rospy.get_rostime().to_sec():
-            self.joyButtonTime = rospy.get_rostime()
+        # The "square" button activates/deactivates mapping and map correcting.
+        if msg.buttons[0] == 1 and self.joyPreviousButtons[0] == 0:
+            if self.activated is "disabled": 
+                self.activated = "mapping"
+            elif self.activated is "mapping": 
+                self.activated = "correcting"
+            else:
+                self.activated = "disabled"
 
-            # The "square" button activates/deactivates mapping and map correcting.
-            if msg.buttons[0] == 1:
-                if self.activated is "disabled": 
-                    self.activated = "mapping"
-                elif self.activated is "mapping": 
-                    self.activated = "correcting"
-                else:
-                    self.activated = "disabled"
+            rospy.loginfo("Info[Cartographer.sub_joy]: Cartographer is currently %s." % (self.activated))
 
-                rospy.loginfo("Info[Cartographer.sub_joy]: Cartographer is currently %s." % (self.activated))
+        # The "start/option" button saves the new map.
+        elif msg.buttons[9] == 1 and self.joyPreviousButtons[9] == 0:
+            self._save_scans()
+            self._save_map_data_as_yaml()
+            self._save_occupancy_grid_as_image()
+            self._save_map_data_as_json()
 
+        # The "share" button loads the old map.
+        elif msg.buttons[8] == 1 and self.joyPreviousButtons[8] == 0:
+            self._load_scans()
+
+        # If the user is mapping, then we add the new scans here.
+        if self.activated == "mapping":
             # The "x" button adds a new scan if mapping.
-            elif msg.buttons[1] == 1 and self.activated == "mapping":
+            if msg.buttons[1] == 1 and self.joyPreviousButtons[1] == 0:
                 position = self.localization.get_position_estimate()
                 mappingCurrentPose = {'x': position.x, 'y': position.y, 'heading': self.localization.get_heading_estimate()}
                 self.scans += [{'pose': mappingCurrentPose, 'points': self.mappingCurrentLaserScan,
                                 'objects': self.mappingCurrentObjects}]
                 self.correctingCurrentScanIndex = len(self.scans) - 1
 
-                rospy.loginfo("Info[Cartographer.sub_joy]: Added a scan at (%.2f, %.2f, %.2f)!"
-                              % (mappingCurrentPose['x'], mappingCurrentPose['y'], mappingCurrentPose['heading']))
+                rospy.loginfo("Info[Cartographer.sub_joy]: Added a scan at (%.2f, %.2f, %.2f)!" %
+                            (mappingCurrentPose['x'], mappingCurrentPose['y'], mappingCurrentPose['heading']))
 
-            # The "start/option" button saves the new map.
-            elif msg.buttons[9] == 1:
-                self._save_scans()
-
-        # If the user is correcting, then we control the scans here.
-        if self.activated == "correcting":
+        # If the user is correcting and there are scans to correct, then we control the scans here.
+        if self.activated == "correcting" and len(self.scans) > 0:
             #  The "L1" and "R1" buttons decrement and increment the selected scan to correct, respectively.
-            if msg.buttons[4] == 1:
+            if msg.buttons[4] == 1 and self.joyPreviousButtons[4] == 0:
                 self.correctingCurrentScanIndex = (self.correctingCurrentScanIndex - 1) % len(self.scans)
-            elif msg.buttons[5] == 1:
+            elif msg.buttons[5] == 1 and self.joyPreviousButtons[5] == 0:
                 self.correctingCurrentScanIndex = (self.correctingCurrentScanIndex + 1) % len(self.scans)
+
+            # The "circle" button deletes the selected scan.
+            elif msg.buttons[2] == 1 and self.joyPreviousButtons[2] == 0:
+                rospy.loginfo("Info[Cartographer.sub_joy]: Removed scan %i at (%.2f, %.2f, %.2f). Now there are %i scans remaining." %
+                            (self.correctingCurrentScanIndex,
+                            self.scans[self.correctingCurrentScanIndex]['pose']['x'],
+                            self.scans[self.correctingCurrentScanIndex]['pose']['y'],
+                            self.scans[self.correctingCurrentScanIndex]['pose']['heading'],
+                            len(self.scans) - 1))
+
+                self.scans = self.scans[0:self.correctingCurrentScanIndex] + self.scans[(self.correctingCurrentScanIndex + 1):len(self.scans)]
+                self.correctingCurrentScanIndex = max(0, min(len(self.scans) - 1, self.correctingCurrentScanIndex))
 
             # The "left analog stick" moves the selected scan.
             if abs(msg.axes[0]) >= self.joyDeadzone:
@@ -291,8 +400,10 @@ class Cartographer(object):
         # If the user is mapping or correcting, then we can publish a new map.
         if self.activated == "mapping" or self.activated == "correcting":
             # The "big center button" publishes a new map.
-            if msg.buttons[13] == 1:
+            if msg.buttons[13] == 1 and self.joyPreviousButtons[13] == 0:
                 self.pubMap.publish(self._compute_occupancy_grid())
+
+        joyPreviousButtons = list(msg.buttons)
 
     def sub_ar_tags(self, msg):
         """ Update the current list of AR tag objects visible and their locations.

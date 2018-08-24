@@ -284,6 +284,13 @@ class Visualize(object):
             cosH = math.cos(heading)
             sinH = math.sin(heading)
 
+            if scanUID == cartographer.get_correcting_current_scan_index():
+                scaleOfPose = 0.2
+                colorOfPose = ColorRGBA(1.0, 1.0, 0.0, self.visualizeAlpha)
+            else:
+                scaleOfPose = 0.1
+                colorOfPose = ColorRGBA(0.0, 0.0, 0.0, self.visualizeAlpha)
+
             poseMarker = Marker()
             poseMarker.header.frame_id = self.mapFrameID
             poseMarker.header.stamp = rospy.get_rostime()
@@ -306,13 +313,6 @@ class Visualize(object):
             poseMarker.color.g = 1.0
             poseMarker.color.b = 1.0
 
-            if scanUID == cartographer.get_correcting_current_scan_index():
-                scaleOfPose = 0.2
-                colorOfPose = ColorRGBA(1.0, 1.0, 0.0, self.visualizeAlpha)
-            else:
-                scaleOfPose = 0.1
-                colorOfPose = ColorRGBA(0.0, 0.0, 0.0, self.visualizeAlpha)
-
             poseMarker.points += [Point(x + scaleOfPose * np.cos(heading - np.pi / 2.0),
                                         y + scaleOfPose * np.sin(heading - np.pi / 2.0), 0.2)]
             poseMarker.points += [Point(x + scaleOfPose * np.cos(heading),
@@ -324,6 +324,13 @@ class Visualize(object):
             scanMarkers.markers += [poseMarker]
 
             # Create the laser scan markers.
+            if scanUID == cartographer.get_correcting_current_scan_index():
+                scaleOfPose = 0.1
+                colorOfLaserScan = ColorRGBA(1.0, 1.0, 0.0, self.visualizeAlpha)
+            else:
+                scaleOfPose = 0.05
+                colorOfLaserScan = ColorRGBA(0.0, 1.0, 0.0, self.visualizeAlpha)
+
             laserScanMarker = Marker()
             laserScanMarker.header.frame_id = self.mapFrameID
             laserScanMarker.header.stamp = rospy.get_rostime()
@@ -338,9 +345,9 @@ class Visualize(object):
             laserScanMarker.pose.orientation.y = 0.0
             laserScanMarker.pose.orientation.z = 0.0
             laserScanMarker.pose.orientation.w = 1.0
-            laserScanMarker.scale.x = 0.05
-            laserScanMarker.scale.y = 0.05
-            laserScanMarker.scale.z = 0.05
+            laserScanMarker.scale.x = scaleOfPose
+            laserScanMarker.scale.y = scaleOfPose
+            laserScanMarker.scale.z = scaleOfPose
             laserScanMarker.color.a = 1.0
             laserScanMarker.color.r = 1.0
             laserScanMarker.color.g = 1.0

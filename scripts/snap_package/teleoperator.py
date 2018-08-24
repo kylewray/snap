@@ -38,11 +38,11 @@ class Teleoperator(object):
 
         self.started = False
         self.activated = False
-        self.activatedTime = rospy.get_rostime()
 
         self.maxTeleoperatorSpeed = float(rospy.get_param("~max_teleoperator_speed", "0.4"))
         self.maxTeleoperatorHeading = float(rospy.get_param("~max_teleoperator_heading", str(np.pi / 2.0)))
         self.joyDeadzone = float(rospy.get_param("~joy_deadzone", "0.1"))
+        self.joyPreviousButtons = [0 for i in range(16)]
 
         self.joyDesiredLongitudinal = 0.0
         self.joyDesiredLateral = 0.0
@@ -73,7 +73,6 @@ class Teleoperator(object):
         rospy.loginfo("Info[Teleoperator.reset]: Resetting teleoperator sub-controller.")
 
         self.activated = False
-        self.activatedTime = rospy.get_rostime()
 
         self.joyDesiredLongitudinal = 0.0
         self.joyDesiredLateral = 0.0
@@ -125,10 +124,9 @@ class Teleoperator(object):
                 msg     --  The joystick information.
         """
 
-        # The "triangle" button activates/deactivates teleoperation, with a 1/2 second delay between each toggle.
-        if msg.buttons[3] == 1 and self.activatedTime.to_sec() + 0.5 <= rospy.get_rostime().to_sec():
+        # The "triangle" button activates/deactivates teleoperation.
+        if msg.buttons[3] == 1 and self.joyPreviousButtons[3] == 0:
             self.activated = not self.activated
-            self.activatedTime = rospy.get_rostime()
 
             if self.activated:
                 rospy.loginfo("Info[Teleoperator.sub_joy]: Teleoperation activated.")
@@ -139,4 +137,6 @@ class Teleoperator(object):
         if self.activated:
             self.joyDesiredLongitudinal = msg.axes[1]
             self.joyDesiredLateral = msg.axes[0]
+
+        self.joyPreviousButtons = list(msg.buttons)
 
