@@ -23,6 +23,6 @@
 """
 
 __all__ = ["cartographer", "controller", "localization", "snap_map", "path_follower",
-           "recovery", "simple_mover", "teleoperater", "visualize"]
+           "recovery", "simple_mover", "teleoperator", "visualize"]
 
 
