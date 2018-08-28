@@ -128,7 +128,7 @@ class Velocity(object):
         """ Get the heading from the PID controller. Update the PID as well.
 
             Parameters:
-                localization            --  The Localization object, which contains position and heading estimates.
+                localization    --  The Localization object, which contains position and heading estimates.
                 desiredHeading  --  The desired heading in radians on [-pi, pi].
 
             Returns:
