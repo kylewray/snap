@@ -47,7 +47,7 @@ class PathFollower(object):
         self.computePathSecondsPerUpdate = 1.0 / float(rospy.get_param("~compute_path_update_rate", "1.0"))
 
         self.pathResolution = float(rospy.get_param("~path_resolution", 0.1))
-        self.minPathListSize = int(rospy.get_param("~min_path_list_size", "5"))
+        self.minPathListSize = int(rospy.get_param("~min_path_list_size", "1"))
         self.maxPathListSize = int(rospy.get_param("~max_path_list_size", 5000))
 
         self.pathFollowTimeAhead = float(rospy.get_param("~path_follow_time_ahead", 3.0))
@@ -230,6 +230,9 @@ class PathFollower(object):
                 poseStamped.pose.position = positionEstimate
 
                 res = srvEpicComputePath(poseStamped, self.pathResolution, 0.1, self.maxPathListSize)
+                print("res = %s" % (str(res)))
+                print("len(poses) = %i vs %i" % (len(res.path.poses), self.minPathListSize))
+
                 if res is not None and len(res.path.poses) >= self.minPathListSize:
                     self.path = res.path.poses
                 else:

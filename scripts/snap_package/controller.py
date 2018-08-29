@@ -223,6 +223,7 @@ class Controller(object):
             subaction = self.subactionQueue[0]
 
             if subaction['type'] == "reset":
+                self.velocity.reset()
                 if self.simpleMover.has_goal():
                     self.simpleMover.reset()
                 if self.pathFollower.has_path():
@@ -239,6 +240,7 @@ class Controller(object):
                     self.simpleMover.perform_simple_moving(self.localization, self.velocity)
 
                     if self.simpleMover.at_goal():
+                        self.velocity.reset()
                         self.simpleMover.reset()
                         self.subactionQueue.pop(0)
                 else:
@@ -253,6 +255,7 @@ class Controller(object):
                     self.pathFollower.perform_path_following(self.localization, self.velocity)
 
                     if self.pathFollower.at_goal():
+                        self.velocity.reset()
                         self.pathFollower.reset()
                         self.subactionQueue.pop(0)
                 else:

@@ -169,9 +169,9 @@ class SimpleMover(object):
 
         desiredSpeed = self.maxSimpleMoverSpeed
         if np.sign(self.goalDistance) > 0.0:
-            desiredSpeed *= float(np.clip(abs(self.goalDistance - distanceFromStart), 0.0, 1.0))
+            desiredSpeed *= float(np.clip(abs(self.goalDistance - distanceFromStart), 0.5, 1.0))
         else:
-            desiredSpeed *= -float(np.clip(abs(-self.goalDistance - distanceFromStart), 0.0, 1.0))
+            desiredSpeed *= -float(np.clip(abs(-self.goalDistance - distanceFromStart), 0.5, 1.0))
 
         # First check if we need to correct the heading.
         if abs(self.goalHeading - headingEstimate) > self.goalHeadingThreshold:

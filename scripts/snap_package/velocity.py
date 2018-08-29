@@ -41,9 +41,9 @@ class Velocity(object):
         self.speedIntegral = 0.0
         self.speedDerivative = 0.0
 
-        self.speedProportionalGain = float(rospy.get_param("~speed_proportional_gain", "0.5"))
-        self.speedIntegralGain = float(rospy.get_param("~speed_integral_gain", "0.01"))
-        self.speedDerivativeGain = float(rospy.get_param("~speed_derivative_gain", "0.15"))
+        self.speedProportionalGain = float(rospy.get_param("~speed_proportional_gain", "0.7"))
+        self.speedIntegralGain = float(rospy.get_param("~speed_integral_gain", "0.05"))
+        self.speedDerivativeGain = float(rospy.get_param("~speed_derivative_gain", "0.4"))
 
         self.headingProportional = 0.0
         self.headingIntegral = 0.0
@@ -51,7 +51,7 @@ class Velocity(object):
 
         self.headingProportionalGain = float(rospy.get_param("~heading_proportional_gain", "0.5"))
         self.headingIntegralGain = float(rospy.get_param("~heading_integral_gain", "0.05"))
-        self.headingDerivativeGain = float(rospy.get_param("~heading_derivative_gain", "0.3"))
+        self.headingDerivativeGain = float(rospy.get_param("~heading_derivative_gain", "0.7"))
 
         self.debugTuneGains = None # None, "speed", or "heading"
 
@@ -142,6 +142,7 @@ class Velocity(object):
         if self.debugTuneGains == "heading":
             desiredHeading = float(np.pi) / 2.0
 
+        # Compute the error in heading and ensure it is on [-pi, pi].
         error = desiredHeading - localization.get_heading_estimate()
         if abs(error) > np.pi:
             if error >= 0.0:
@@ -149,6 +150,13 @@ class Velocity(object):
             elif error < 0.0:
                 error = (desiredHeading + float(np.pi) * 2.0) - localization.get_heading_estimate()
 
+        # Adjust the proportional gain constant if the error is small since the wheels are not
+        # very responsive otherwise.
+        gainScale = 1.0
+        if abs(error) < np.pi / 2.0:
+            gainScale = (np.pi / 2.0 - abs(error)) + 1.0
+
+        # Compute the PID control of the heading.
         self.headingIntegral += error
         self.headingDerivative = error - self.headingProportional
         self.headingProportional = error
@@ -158,7 +166,7 @@ class Velocity(object):
         self.headingIntegral = np.clip(self.headingIntegral * integralDecay, -100.0, 100.0)
         self.headingDerivative = np.clip(self.headingDerivative, -100.0, 100.0)
 
-        result = (self.headingProportionalGain * self.headingProportional
+        result = (gainScale * self.headingProportionalGain * self.headingProportional
                   + self.headingIntegralGain * self.headingIntegral
                   + self.headingDerivativeGain * self.headingDerivative)
 
