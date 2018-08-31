@@ -211,8 +211,6 @@ class PathFollower(object):
                 poseStamped.pose.position = Point(positionEstimate.x, positionEstimate.y, 0.0)
 
                 res = srvEpicComputePath(poseStamped, self.pathResolution, 0.1, self.maxPathListSize)
-                print("res = %s" % (str(res)))
-                print("len(poses) = %i vs %i" % (len(res.path.poses), self.minPathListSize))
 
                 if res is not None and len(res.path.poses) >= self.minPathListSize:
                     self.path = res.path.poses

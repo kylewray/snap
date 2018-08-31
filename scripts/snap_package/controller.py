@@ -431,9 +431,9 @@ class Controller(object):
         if objectHeading is None:
             return ActionAlignResponse(self.currentAction)
 
-        goalHeading = objectHeading + float(np.pi)
-        if goalHeading > np.pi:
-            goalHeading -= 2.0 * float(np.pi)
+        goalHeading = objectHeading - float(np.pi)
+        if goalHeading < np.pi:
+            goalHeading += 2.0 * float(np.pi)
 
         goalPosition = self.snapMap.get_object_position(request.object_uid)
         goalPosition.x += float(request.distance_from_object * np.cos(objectHeading))

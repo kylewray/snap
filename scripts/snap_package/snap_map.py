@@ -364,7 +364,12 @@ class SnapMap(object):
         if obj is None:
             return None
 
-        return float(np.clip(obj['heading'], -np.pi, np.pi))
+        if obj['heading'] < -float(np.pi):
+            return float(obj['heading'] + float(2.0 * np.pi))
+        elif obj['heading'] > float(np.pi):
+            return float(obj['heading'] - float(2.0 * np.pi))
+        else:
+            return float(obj['heading'])
 
     def _convert_region_to_msg(self, region):
         """ Convert a region to a region message for easy service definitions.
