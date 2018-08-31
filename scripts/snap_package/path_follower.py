@@ -44,14 +44,14 @@ class PathFollower(object):
         self.path = None
         self.goalPositions = list()
         self.lastComputePathUpdateTime = None
-        self.computePathSecondsPerUpdate = 1.0 / float(rospy.get_param("~compute_path_update_rate", "1.0"))
+        self.computePathSecondsPerUpdate = 1.0 / float(rospy.get_param("~compute_path_update_rate", 1.0))
 
         self.pathResolution = float(rospy.get_param("~path_resolution", 0.1))
         self.minPathListSize = int(rospy.get_param("~min_path_list_size", "1"))
         self.maxPathListSize = int(rospy.get_param("~max_path_list_size", 5000))
 
         self.pathFollowTimeAhead = float(rospy.get_param("~path_follow_time_ahead", 3.0))
-        self.maxPathFollowerSpeed = float(rospy.get_param("~max_path_follower_speed", "0.3"))
+        self.maxPathFollowerSpeed = float(rospy.get_param("~max_path_follower_speed", 0.3))
 
         self.mapFrameID = rospy.get_param("~map_frame_id", "map")
 
@@ -184,25 +184,6 @@ class PathFollower(object):
 
         return self.path is not None
 
-    def path_reaches_goal(self):
-        """ Determine if the current path reaches anywhere near any of the goals.
-
-            Returns:
-                True if it reaches anywhere near any of the goals, False otherwise.
-        """
-
-        if not self.has_goal() or not self.has_path():
-            return False
-        elif len(self.path) <= self.minPathListSize:
-            return False
-        elif len(self.path) >= int(self.maxPathListSize / 2 - 1):
-            return True
-
-        endOfPath = Point(self.path[-1].pose.position.x, self.path[-1].pose.position.y, 0.0)
-        distanceToNearestGoal = self._compute_distance_to_nearest_goal(endOfPath)
-
-        return distanceToNearestGoal <= 1.0
-
     def _compute_path(self, positionEstimate):
         """ Compute the actual path given a proper localization.
 
@@ -227,7 +208,7 @@ class PathFollower(object):
                 poseStamped.header.frame_id = self.mapFrameID
                 poseStamped.header.stamp = rospy.get_rostime()
                 poseStamped.pose = Pose()
-                poseStamped.pose.position = positionEstimate
+                poseStamped.pose.position = Point(positionEstimate.x, positionEstimate.y, 0.0)
 
                 res = srvEpicComputePath(poseStamped, self.pathResolution, 0.1, self.maxPathListSize)
                 print("res = %s" % (str(res)))
@@ -242,6 +223,32 @@ class PathFollower(object):
                 rospy.logwarn("Warning[PathFollower._compute_path]: %s" %
                               ("Failed to execute service call ComputePath in 'epic'."))
                 self.path = None
+
+            if self.path is None:
+                try:
+                    rospy.logwarn("Warning[PathFollower._compute_path]: %s" %
+                                    ("Failed first attempt. Trying a few nearby positions to get a path..."))
+
+                    scaleOfRandomness = 0.25
+                    directionOfRandomness = np.random.permutation([[-1.0, -1.0], [0.0, -1.0], [1.0, -1.0],
+                                                                    [-1.0, 0.0], [0.0, 0.0], [1.0, 0.0],
+                                                                    [-1.0, 1.0], [0.0, 1.0], [1.0, 1.0]])
+                    for r in directionOfRandomness:
+                        poseStamped.pose.position = Point()
+                        poseStamped.pose.position.x = positionEstimate.x + scaleOfRandomness * r[0]
+                        poseStamped.pose.position.y = positionEstimate.y + scaleOfRandomness * r[1]
+                        res = srvEpicComputePath(poseStamped, self.pathResolution, 0.1, self.maxPathListSize)
+                        if res is not None and len(res.path.poses) >= self.minPathListSize:
+                            self.path = res.path.poses
+                            break
+
+                    if res is None or len(res.path.poses) < self.minPathListSize:
+                        raise rospy.ServiceException()
+
+                except rospy.ServiceException:
+                    rospy.logwarn("Warning[PathFollower._compute_path]: %s" %
+                                ("Failed to execute service call ComputePath in 'epic', even after extra attempts."))
+                    self.path = None
 
     def _compute_closest_path_index(self, position):
         """ Compute the closest index along the path to the pose given.
@@ -275,7 +282,8 @@ class PathFollower(object):
         if not self.has_goal() or type(positionEstimate) is not Point:
             return np.inf
 
-        goalDistances = sorted([pow(element.x - positionEstimate.x, 2) + pow(element.y - positionEstimate.y, 2)
+        goalDistances = sorted([math.sqrt(pow(element.x - positionEstimate.x, 2) +
+                                          pow(element.y - positionEstimate.y, 2))
                                 for element in self.goalPositions])
 
         return math.sqrt(goalDistances[0])
@@ -295,17 +303,18 @@ class PathFollower(object):
 
         positionEstimate = localization.get_position_estimate()
 
-        # Now attempt to get a path, if the path does not reach any goal then also publish empty.
+        # Now attempt to get a path, if the path is not defined then also publish empty.
         self._compute_path(positionEstimate)
-        if not self.path_reaches_goal():
+        if not self.has_path():
             self.pubKobukiVelocity.publish(Twist())
             return
 
         # We have a path! Use it to check if we are at the goal.
         distanceToNearestGoal = self._compute_distance_to_nearest_goal(positionEstimate)
 
-        # Check if we reached the goal to within 0.1 meter. If so, then halt the path follower.
-        if distanceToNearestGoal < 0.1:
+        # Check if we reached the goal to within 3 times of the path resolution (in meters). If so,
+        # then halt the path follower since we will call this "arriving at the goal."
+        if distanceToNearestGoal < self.pathResolution * 3.0:
             self.atGoal = True
             self.pubKobukiVelocity.publish(Twist())
             return
@@ -328,6 +337,16 @@ class PathFollower(object):
         desiredSpeed = self.maxPathFollowerSpeed * min(1.0, distanceToNearestGoal)
         desiredHeading = float(np.arctan2(self.path[localGoalPathIndex].pose.position.y - positionEstimate.y,
                                           self.path[localGoalPathIndex].pose.position.x - positionEstimate.x))
+
+        # Slow the desired speed down based on how much we have to turn (i.e., the error in heading).
+        error = desiredHeading - localization.get_heading_estimate()
+        if abs(error) > np.pi:
+            if error >= 0.0:
+                error = desiredHeading - (localization.get_heading_estimate() + float(np.pi) * 2.0)
+            elif error < 0.0:
+                error = (desiredHeading + float(np.pi) * 2.0) - localization.get_heading_estimate()
+        if abs(error) >= np.pi / 2.0:
+            desiredSpeed *= (abs(error) - (np.pi / 2.0)) / (np.pi / 2.0)
 
         # Construct and publish the twist message which combines both the speed
         # and the angular adjustment.
