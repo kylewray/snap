@@ -34,6 +34,7 @@ from ar_track_alvar_msgs.msg import AlvarMarkers
 
 from snap.msg import LocalizationEstimate
 
+import math
 import numpy as np
 
 
@@ -60,6 +61,12 @@ class Localization(object):
 
         self.maxSpeedEstimates = int(rospy.get_param("~max_speed_estimates", "20"))
         self.speedEstimates = [0.0 for i in range(self.maxSpeedEstimates)]
+
+        self.localizationWeightOfObjects = float(rospy.get_param("~localization_weight_of_objects", "0.05"))
+        self.thresholdDistanceFromCurrentEstimate = \
+                float(rospy.get_param("~localization_threshold_distance_from_current_estimate", "0.5"))
+        self.thresholdDistanceFromView = float(rospy.get_param("~localization_threshold_distance_from_view", "1.25"))
+        self.thresholdThetaFromView = float(rospy.get_param("~localization_threshold_theta_view_view", "0.4"))
 
         self.subKobukiOdometry = None
         self.subARTags = None
@@ -246,8 +253,6 @@ class Localization(object):
                 msg     --  The AlvarMarkers message data.
         """
 
-        #return  # TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
-
         if not self.started:
             rospy.logwarn("Warn[Localization.sub_ar_tags]: Initialization has not yet completed.")
             return
@@ -263,29 +268,62 @@ class Localization(object):
             if obj is None:
                 continue
 
-            rospy.loginfo("Info[Localization.sub_ar_tags]: Detected Marker ID %i - Found a match in the map!" % (marker.id))
+            #rospy.loginfo("Info[Localization.sub_ar_tags]: Detected Marker ID %i - Found a match in the map!" % (marker.id))
 
-            # Get the location in the map and offset it by the observed pose. This is the
-            # observed estimate of the robot position.
-            newPositionEstimate.x = ((numARTags * newPositionEstimate.x
-                                      + (obj['position'][0] - marker.pose.pose.position.x))
-                                     / (numARTags + 1))
-            newPositionEstimate.y = ((numARTags * newPositionEstimate.y
-                                      + (obj['position'][1] - marker.pose.pose.position.y))
-                                     / (numARTags + 1))
-
-            ## TODO: Also get the orientation's yaw of the AR tag and offset that to get a heading.
+            # Get maker (x, y, theta).
+            markerX = marker.pose.pose.position.x
+            markerY = marker.pose.pose.position.y
             markerHeading = self._compute_heading_estimate(marker.pose.pose)
-            newHeadingEstimate = ((numARTags * newHeadingEstimate
-                                   + (obj['heading'] - markerHeading))
-                                  / (numARTags + 1))
+
+            # Compute the offset and update the new estimate.
+            heading = obj['heading'] - markerHeading + float(np.pi / 2.0)
+            x = obj['position'][0] - markerX * math.cos(heading) + markerY * math.sin(heading)
+            y = obj['position'][1] - markerX * math.sin(heading) - markerY * math.cos(heading)
+
+            # Compute some metrics about this observation.
+            distanceFromCurrentEstimate = math.sqrt(pow(x - self.positionEstimate.x, 2)
+                                                    + pow(y - self.positionEstimate.y, 2))
+            distanceFromView = math.sqrt(pow(markerX, 2) + pow(markerY, 2))
+            thetaFromView = abs(float(np.arctan2(markerY, markerX)))
+
+            # If these metrics show this observation gave a wild result or was too far from a good view, then throw it out.
+            if distanceFromCurrentEstimate >= self.thresholdDistanceFromCurrentEstimate:
+                print("Distance From Current Estimate of %.2f is greater than %.2f. Throw it away!" % (distanceFromCurrentEstimate, self.thresholdDistanceFromCurrentEstimate))
+                continue
+            if distanceFromView >= self.thresholdDistanceFromView:
+                print("Distance From View of %.2f is greater than %.2f. Throw it away!" % (distanceFromView, self.thresholdDistanceFromView))
+                continue
+            if thetaFromView >= self.thresholdThetaFromView:
+                print("Theta From View of %.2f is greater than %.2f. Throw it away!" % (thetaFromView, self.thresholdThetaFromView))
+                continue
+
+            print("Keep it! New (x, y, theta) estimate is (%.2f, %.2f, %.2f)!" % (x, y, heading))
+
+            # Get the location and heading in the map and offset it properly by the observed pose.
+            # Update the running average if you find more than one AR tag that can help localize.
+            newPositionEstimate.x = float(numARTags * newPositionEstimate.x + x) / float(numARTags + 1)
+            newPositionEstimate.y = float(numARTags * newPositionEstimate.y + y) / float(numARTags + 1)
+            newHeadingEstimate = float(numARTags * newHeadingEstimate + heading) / float(numARTags + 1)
 
             numARTags += 1.0
 
+            ## DEBUG  TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+            #roll, pitch, yaw = euler_from_quaternion([marker.pose.pose.orientation.x,
+            #                                          marker.pose.pose.orientation.y,
+            #                                          marker.pose.pose.orientation.z,
+            #                                          marker.pose.pose.orientation.w])
+            #print("Distance = %.3f" % (distanceAwayFromView))
+            #print("Theta = %.3f" % (abs(thetaAwayFromView)))
+            #print("Roll = %.2f    Pitch = %.2f    Yaw = %.2f" % (roll, pitch, yaw))
+
+
         if numARTags > 0.0:
-            self.positionEstimate.x = newPositionEstimate.x
-            self.positionEstimate.y = newPositionEstimate.y
-            #self.headingEstimate = newHeadingEstimate
+            self.positionEstimate.x = ((1.0 - self.localizationWeightOfObjects) * self.positionEstimate.x
+                                        + self.localizationWeightOfObjects * newPositionEstimate.x)
+            self.positionEstimate.y = ((1.0 - self.localizationWeightOfObjects) * self.positionEstimate.y
+                                        + self.localizationWeightOfObjects * newPositionEstimate.y)
+            self.headingEstimate = ((1.0 - self.localizationWeightOfObjects) * self.headingEstimate
+                                        + self.localizationWeightOfObjects * newHeadingEstimate)
 
     def sub_depth_point_cloud(self, msg):
         """ Update the raw depth point cloud information, including sub-sampling and extracting abstract data.
