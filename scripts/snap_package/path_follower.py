@@ -51,7 +51,7 @@ class PathFollower(object):
         self.maxPathListSize = int(rospy.get_param("~max_path_list_size", 5000))
 
         self.pathFollowTimeAhead = float(rospy.get_param("~path_follow_time_ahead", 3.0))
-        self.maxPathFollowerSpeed = float(rospy.get_param("~max_path_follower_speed", 0.3))
+        self.maxPathFollowerSpeed = float(rospy.get_param("~max_path_follower_speed", 0.25))
 
         self.mapFrameID = rospy.get_param("~map_frame_id", "map")
 
@@ -310,9 +310,9 @@ class PathFollower(object):
         # We have a path! Use it to check if we are at the goal.
         distanceToNearestGoal = self._compute_distance_to_nearest_goal(positionEstimate)
 
-        # Check if we reached the goal to within 3 times of the path resolution (in meters). If so,
+        # Check if we reached the goal to within 4.2 times of the path resolution (in meters). If so,
         # then halt the path follower since we will call this "arriving at the goal."
-        if distanceToNearestGoal < self.pathResolution * 3.0:
+        if distanceToNearestGoal < self.pathResolution * 4.2:
             self.atGoal = True
             self.pubKobukiVelocity.publish(Twist())
             return
@@ -343,8 +343,7 @@ class PathFollower(object):
                 error = desiredHeading - (localization.get_heading_estimate() + float(np.pi) * 2.0)
             elif error < 0.0:
                 error = (desiredHeading + float(np.pi) * 2.0) - localization.get_heading_estimate()
-        if abs(error) >= np.pi / 2.0:
-            desiredSpeed *= (abs(error) - (np.pi / 2.0)) / (np.pi / 2.0)
+        desiredSpeed /= (abs(error) + 1.0)
 
         # Construct and publish the twist message which combines both the speed
         # and the angular adjustment.

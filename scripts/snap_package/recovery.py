@@ -48,7 +48,7 @@ class Recovery(object):
 
         self.maxRecoveryDuration = float(rospy.get_param("~max_recovery_duration", "1.0"))
         self.maxRecoveryDistance = float(rospy.get_param("~max_recovery_distance", "0.5"))
-        self.maxRecoverySpeed = float(rospy.get_param("~max_recovery_speed", "0.3"))
+        self.maxRecoverySpeed = float(rospy.get_param("~max_recovery_speed", "0.2"))
         self.maxRecoveryHeading = float(rospy.get_param("~max_recovery_heading", str(np.pi / 2.0)))
 
         self.subKobukiBumper = None

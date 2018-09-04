@@ -44,7 +44,7 @@ class SimpleMover(object):
         self.goalHeading = None
         self.goalDistance = None
 
-        self.maxSimpleMoverSpeed = float(rospy.get_param("~max_simple_mover_speed", "0.3"))
+        self.maxSimpleMoverSpeed = float(rospy.get_param("~max_simple_mover_speed", "0.25"))
         self.maxSimpleMoverHeading = float(rospy.get_param("~max_simple_mover_heading", str(np.pi)))
 
         self.goalHeadingThreshold = float(rospy.get_param("~simple_mover_goal_heading_threshold", "0.05"))
