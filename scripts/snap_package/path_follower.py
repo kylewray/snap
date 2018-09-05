@@ -352,5 +352,13 @@ class PathFollower(object):
         control.linear.x = localization.get_speed_estimate() + velocity.compute_speed(localization, desiredSpeed)
         control.angular.z = velocity.compute_heading(localization, desiredHeading)
 
+        # If there were invalid computations for some reason, then fix them.
+        if np.isnan(control.linear.x):
+            control.linear.x = 0.0
+            rospy.logwarn("Warning[PathFollower.perform_path_following]: Nan detected in linear x-control message.")
+        if np.isnan(control.angular.z):
+            control.angular.z = 0.0
+            rospy.logwarn("Warning[PathFollower.perform_path_following]: Nan detected in angular z-control message.")
+
         self.pubKobukiVelocity.publish(control)
 

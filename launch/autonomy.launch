@@ -38,6 +38,9 @@
 
     <param name="pub_kobuki_velocity" value="/mobile_base/commands/velocity" />
     <param name="pub_kobuki_reset_odometry" value="/mobile_base/commands/reset_odometry" />
+    <param name="pub_kobuki_led_1" value="/mobile_base/commands/led1" />
+    <param name="pub_kobuki_led_2" value="/mobile_base/commands/led2" />
+    <param name="pub_kobuki_sound" value="/mobile_base/commands/sound" />
 
     <param name="sub_map" value="/map" />
     <param name="sub_joy" value="/joy" />

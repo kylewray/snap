@@ -74,7 +74,8 @@ class Controller(object):
 
         self.pubKobukiVelocity = None
         self.pubKobukiResetOdometry = None
-        self.pubKobukiLed = None
+        self.pubKobukiLed1 = None
+        self.pubKobukiLed2 = None
         self.pubKobukiSound = None
 
         self.pubObservationActionComplete = None
@@ -96,8 +97,11 @@ class Controller(object):
         pubKobukiResetOdometryTopic = rospy.get_param("~pub_kobuki_reset_odometry", "cmd_reset_odom")
         self.pubKobukiResetOdometry = rospy.Publisher(pubKobukiResetOdometryTopic, Empty, queue_size=8)
 
-        pubKobukiLedTopic = rospy.get_param("~pub_kobuki_led", "cmd_led_1")
-        self.pubKobukiLed = rospy.Publisher(pubKobukiLedTopic, Led, queue_size=8)
+        pubKobukiLed1Topic = rospy.get_param("~pub_kobuki_led_1", "cmd_led_1")
+        self.pubKobukiLed1 = rospy.Publisher(pubKobukiLed1Topic, Led, queue_size=8)
+
+        pubKobukiLed2Topic = rospy.get_param("~pub_kobuki_led_2", "cmd_led_2")
+        self.pubKobukiLed2 = rospy.Publisher(pubKobukiLed2Topic, Led, queue_size=8)
 
         pubKobukiSoundTopic = rospy.get_param("~pub_kobuki_sound", "cmd_sound")
         self.pubKobukiSound = rospy.Publisher(pubKobukiSoundTopic, Sound, queue_size=8)
@@ -248,22 +252,21 @@ class Controller(object):
             elif subaction['type'] == "sleep":
                 if self.subactionSleepStartTime is None:
                     self.subactionSleepStartTime = rospy.get_rostime()
-                elif self.subactionSleepStartTime + float(subaction['duration']) <= rospy.get_rostime():
+                elif self.subactionSleepStartTime.to_sec() + float(subaction['duration']) <= rospy.get_rostime().to_sec():
                     self.subactionSleepStartTime = None
                     self.subactionQueue.pop(0)
 
             elif subaction['type'] == "communicate":
                 try:
-                    led = Led()
-                    led.value = subaction['led']
-                    self.pubKobukiLed.publish(led)
+                    self.pubKobukiLed1.publish(Led(subaction['led1']))
                 except KeyError:
                     pass
-
                 try:
-                    sound = Sound()
-                    sound.value = subaction['sound']
-                    self.pubKobukiSound.publish(sound)
+                    self.pubKobukiLed2.publish(Led(subaction['led2']))
+                except KeyError:
+                    pass
+                try:
+                    self.pubKobukiSound.publish(Sound(subaction['sound']))
                 except KeyError:
                     pass
 
@@ -497,9 +500,9 @@ class Controller(object):
         if self.currentAction is not ActionType.NONE:
             return ActionCommunicateResponse(self.currentAction)
 
-        self.subactionQueue += [{'type': "communicate", 'led': request.led, 'sound': request.sound},
+        self.subactionQueue += [{'type': "communicate", 'led1': request.led1, 'led2': request.led2, 'sound': request.sound},
                                 {'type': "sleep", 'duration': request.duration},
-                                {'type': "communicate", 'led': Led.BLACK},]
+                                {'type': "communicate", 'led1': Led.BLACK, 'led2': Led.BLACK},]
 
         self.currentAction = ActionType.COMMUNICATE
         self.observationActionCompleteResult = ObservationActionComplete.SUCCESS

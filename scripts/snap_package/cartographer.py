@@ -91,6 +91,7 @@ class Cartographer(object):
         self.subLaserScan = None
 
         self.pubMap = None
+        self.pubObservationDetectedObjects = None
 
     def start(self):
         """ Start the necessary messages for cartographer. """
@@ -102,6 +103,11 @@ class Cartographer(object):
         rospy.loginfo("Info[Cartographer.start]: Starting cartographer sub-controller.")
 
         self._load_scans()
+
+        pubObservationDetectedObjectsTopic = rospy.get_param("~pub_observation_detected_objects",
+                                                             "~observation_detected_objects")
+        self.pubObservationDetectedObjects = rospy.Publisher(pubObservationDetectedObjectsTopic,
+                                                             ObservationDetectedObjects, queue_size=8)
 
         subJoyTopic = rospy.get_param("~sub_joy", "evt_joy")
         self.subJoy = rospy.Subscriber(subJoyTopic, Joy, self.sub_joy)
@@ -417,6 +423,7 @@ class Cartographer(object):
             rospy.logwarn("Warn[Cartographer.sub_ar_tags]: Initialization has not yet completed.")
             return
 
+        # First, we handle mapping by updating the current list of objects for mapping purposes.
         self.mappingCurrentObjects = list()
 
         for marker in msg.markers:
@@ -431,6 +438,52 @@ class Cartographer(object):
             self.mappingCurrentObjects += [{'uid': marker.id, 'heading': yaw,
                                             'x': marker.pose.pose.position.x,
                                             'y': marker.pose.pose.position.y}]
+
+        # Second, we handle updating the poses of dynamic objects already created in the map that exists.
+        detectedObjects = list()
+
+        for marker in msg.markers:
+            # Check if the observed AR tag is in the map. If not, continue.
+            obj = self.snapMap.get_object(marker.id)
+            if obj is None:
+                continue
+
+            # Record that we observed this object.
+            detectedObjects += [marker.id]
+
+            # Even if it is in the map, only update it if it has the "dynamic" type.
+            if obj['type'] != "dynamic":
+                continue
+
+            # Get the yaw of the marker.
+            roll, pitch, yaw = euler_from_quaternion([marker.pose.pose.orientation.x,
+                                                      marker.pose.pose.orientation.y,
+                                                      marker.pose.pose.orientation.z,
+                                                      marker.pose.pose.orientation.w])
+            if yaw > np.pi:
+                yaw -= 2.0 * float(np.pi)
+            elif yaw < -np.pi:
+                yaw += 2.0 * float(np.pi)
+
+            x = self.localization.get_position_estimate().x
+            y = self.localization.get_position_estimate().y
+            heading = self.localization.get_heading_estimate()
+            cosH = math.cos(heading)
+            sinH = math.sin(heading)
+
+            objX = marker.pose.pose.position.x
+            objY = marker.pose.pose.position.y
+            objHeading = yaw
+
+            # Update the (x, y, theta) in the list of objects.
+            obj['position'][0] = x + objX * cosH - objY * sinH
+            obj['position'][1] = y + objX * sinH + objY * cosH
+            obj['heading'] = heading + objHeading - float(np.pi / 2.0)
+
+        # Publish a message of all objects detected.
+        observationObjects = ObservationDetectedObjects()
+        observationObjects.object_uids = detectedObjects
+        self.pubObservationDetectedObjects.publish(observationObjects)
 
     def sub_laser_scan(self, msg):
         """ Update the current laser scan points. """

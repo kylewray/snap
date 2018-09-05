@@ -185,6 +185,14 @@ class SimpleMover(object):
         else:
             self.atGoal = True
 
+        # If there were invalid computations for some reason, then fix them.
+        if np.isnan(control.linear.x):
+            control.linear.x = 0.0
+            rospy.logwarn("Warning[SimpleMover.perform_simple_moving]: Nan detected in linear x-control message.")
+        if np.isnan(control.angular.z):
+            control.angular.z = 0.0
+            rospy.logwarn("Warning[SimpleMover.perform_simple_moving]: Nan detected in angular z-control message.")
+
         # Whatever the control ends up as, including empty, we publish it.
         self.pubKobukiVelocity.publish(control)
 

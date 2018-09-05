@@ -1,14 +1,15 @@
 # This message describes active communication as LED and beeps.
 
-# What LED to show for the Kobuki. These match kobuki_msgs/Led.
+# What LED(s) to show for the Kobuki. These match kobuki_msgs/Led. Default is BLACK.
 uint8 BLACK = 0
 uint8 GREEN = 1
 uint8 ORANGE = 2
 uint8 RED = 3
 
-uint8 led
+uint8 led1
+uint8 led2
 
-# What sound to make for the Kobuki. These match kobuki_msgs/Sound.
+# What sound to make for the Kobuki. These match kobuki_msgs/Sound. Default is >=7.
 uint8 ON = 0
 uint8 OFF = 1
 uint8 RECHARGE = 2
