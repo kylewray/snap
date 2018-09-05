@@ -27,6 +27,8 @@ import rospy
 from geometry_msgs.msg import Point
 from std_msgs.msg import ColorRGBA
 
+from ar_track_alvar_msgs.msg import AlvarMarkers
+
 from snap.msg import *
 from snap.srv import *
 
@@ -55,8 +57,8 @@ class SnapMap(object):
         # Used to properly publish the alpha value of a color.
         self.visualizeAlpha = float(rospy.get_param("~visualize_alpha", "0.2"))
 
-        # TODO: Publish detected objects that match the map's objects.
-        self.pubObservationObjectDetection = None
+        self.subARTags = None
+        self.pubObservationDetectedObjects = None
 
     def start(self):
         """ Start the necessary messages for map. """
@@ -68,6 +70,14 @@ class SnapMap(object):
         rospy.loginfo("Info[SnapMap.start]: Starting map sub-controller.")
 
         self._load_map_data()
+
+        pubObservationDetectedObjectsTopic = rospy.get_param("~pub_observation_detected_objects",
+                                                             "~observation_detected_objects")
+        self.pubObservationDetectedObjects = rospy.Publisher(pubObservationDetectedObjectsTopic,
+                                                             ObservationDetectedObjects, queue_size=8)
+
+        subARTagsTopic = rospy.get_param("~sub_ar_tags", "ar_pose_marker")
+        self.subARTags = rospy.Subscriber(subARTagsTopic, AlvarMarkers, self.sub_ar_tags)
 
         srvGetRegionsTopic = rospy.get_param("~map_get_regions_topic", "~get_regions")
         self.srvGetRegions = rospy.Service(srvGetRegionsTopic,
@@ -578,4 +588,59 @@ class SnapMap(object):
             objectResponse.object = self._convert_object_to_msg(obj)
         return objectResponse
 
+    def sub_ar_tags(self, msg):
+        """ Update the objects using the AR tags known on the map. This requires localization.
+
+            Parameters:
+                msg     --  The AlvarMarkers message data.
+        """
+
+        if not self.started:
+            rospy.logwarn("Warn[SnapMap.sub_ar_tags]: Initialization has not yet completed.")
+            return
+
+        detectedObjects = list()
+
+        for marker in msg.markers:
+            # Check if the observed AR tag is in the map. If not, continue.
+            obj = self.get_object(marker.id)
+            if obj is None:
+                continue
+
+            # Record that we observed this object.
+            detectedObjects += [marker.id]
+
+            # Even if it is in the map, only update it if it has the "dynamic" type.
+            if obj['type'] != "dynamic":
+                continue
+
+            # Get the yaw of the marker.
+            roll, pitch, yaw = euler_from_quaternion([marker.pose.pose.orientation.x,
+                                                      marker.pose.pose.orientation.y,
+                                                      marker.pose.pose.orientation.z,
+                                                      marker.pose.pose.orientation.w])
+            if yaw > np.pi:
+                yaw -= 2.0 * float(np.pi)
+            elif yaw < -np.pi:
+                yaw += 2.0 * float(np.pi)
+
+            x = self.localizationEstimate.x
+            y = self.localizationEstimate.y
+            heading = self.localizationEstimate.heading
+            cosH = math.cos(heading)
+            sinH = math.sin(heading)
+
+            objX = marker.pose.pose.position.x
+            objY = marker.pose.pose.position.y
+            objHeading = yaw
+
+            # Update the (x, y, theta) in the list of objects.
+            obj['position'][0] = x + objX * cosH - objY * sinH
+            obj['position'][1] = y + objX * sinH + objY * cosH
+            obj['heading'] = heading + objHeading - float(np.pi / 2.0)
+
+        # Publish a message of all objects detected.
+        observationObjects = ObservationDetectedObjects()
+        observationObjects.object_uids = detectedObjects
+        self.pubObservationDetectedObjects.publish(observationObjects)
 

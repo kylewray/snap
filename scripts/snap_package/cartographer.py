@@ -221,6 +221,7 @@ class Cartographer(object):
                 for uid, xyHeadingLists in objectDict.items():
                     objectList += [{'uid': uid,
                                     'name': "Unknown",
+                                    'type': "static",
                                     'tag_uid': uid,
                                     'position': [sum(objectDict[uid]['x']) / len(objectDict[uid]['x']),
                                                     sum(objectDict[uid]['y']) / len(objectDict[uid]['y'])],

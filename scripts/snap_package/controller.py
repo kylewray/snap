@@ -28,7 +28,7 @@ import random as rnd
 
 from std_msgs.msg import Empty
 from geometry_msgs.msg import Twist, Point
-from kobuki_msgs.msg import BumperEvent
+from kobuki_msgs.msg import BumperEvent, Led, Sound
 
 from snap.srv import *
 from snap.msg import *
@@ -58,6 +58,8 @@ class Controller(object):
         self.observationActionCompleteResult = ObservationActionComplete.NONE
         self.subactionQueue = list()
 
+        self.subactionSleepStartTime = None
+
         self.snapMap = SnapMap()
         self.localization = Localization(self.snapMap)
         self.cartographer = Cartographer(self.snapMap, self.localization)
@@ -72,6 +74,8 @@ class Controller(object):
 
         self.pubKobukiVelocity = None
         self.pubKobukiResetOdometry = None
+        self.pubKobukiLed = None
+        self.pubKobukiSound = None
 
         self.pubObservationActionComplete = None
         self.pubObservationRecovery = None
@@ -90,7 +94,13 @@ class Controller(object):
         self.pubKobukiVelocity = rospy.Publisher(pubKobukiVelocityTopic, Twist, queue_size=32)
 
         pubKobukiResetOdometryTopic = rospy.get_param("~pub_kobuki_reset_odometry", "cmd_reset_odom")
-        self.pubKobukiResetOdometry = rospy.Publisher(pubKobukiResetOdometryTopic, Empty, queue_size=32)
+        self.pubKobukiResetOdometry = rospy.Publisher(pubKobukiResetOdometryTopic, Empty, queue_size=8)
+
+        pubKobukiLedTopic = rospy.get_param("~pub_kobuki_led", "cmd_led_1")
+        self.pubKobukiLed = rospy.Publisher(pubKobukiLedTopic, Led, queue_size=8)
+
+        pubKobukiSoundTopic = rospy.get_param("~pub_kobuki_sound", "cmd_sound")
+        self.pubKobukiSound = rospy.Publisher(pubKobukiSoundTopic, Sound, queue_size=8)
 
         pubObservationActionCompleteTopic = rospy.get_param("~pub_observation_action_complete",
                                                             "~observation_action_complete")
@@ -145,8 +155,13 @@ class Controller(object):
 
         srvActionAlignTopic = rospy.get_param("~action_align_topic", "~action_align")
         self.srvActionAlign = rospy.Service(srvActionAlignTopic,
-                                           ActionAlign,
-                                           self.srv_action_align)
+                                            ActionAlign,
+                                            self.srv_action_align)
+
+        srvActionCommunicateTopic = rospy.get_param("~action_communicate_topic", "~action_communicate")
+        self.srvActionCommunicate = rospy.Service(srvActionCommunicateTopic,
+                                                  ActionCommunicate,
+                                                  self.srv_action_communicate)
 
         secondsPerUpdate = 1.0 / float(rospy.get_param("~update_rate", "10.0"))
         self.timer = rospy.Timer(rospy.Duration(secondsPerUpdate), self.update)
@@ -228,6 +243,30 @@ class Controller(object):
                     self.simpleMover.reset()
                 if self.pathFollower.has_path():
                     self.pathFollower.reset()
+                self.subactionQueue.pop(0)
+
+            elif subaction['type'] == "sleep":
+                if self.subactionSleepStartTime is None:
+                    self.subactionSleepStartTime = rospy.get_rostime()
+                elif self.subactionSleepStartTime + float(subaction['duration']) <= rospy.get_rostime():
+                    self.subactionSleepStartTime = None
+                    self.subactionQueue.pop(0)
+
+            elif subaction['type'] == "communicate":
+                try:
+                    led = Led()
+                    led.value = subaction['led']
+                    self.pubKobukiLed.publish(led)
+                except KeyError:
+                    pass
+
+                try:
+                    sound = Sound()
+                    sound.value = subaction['sound']
+                    self.pubKobukiSound.publish(sound)
+                except KeyError:
+                    pass
+
                 self.subactionQueue.pop(0)
 
             elif subaction['type'] == "set":
@@ -355,8 +394,7 @@ class Controller(object):
         if self.currentAction is not ActionType.NONE:
             return ActionNavigateResponse(self.currentAction)
 
-        self.subactionQueue += [{'type': "path follower", 'goals': [Point(3.0, 2.0, 0.0)]}]
-        #self.subactionQueue += [{'type': "path follower", 'goals': request.points}]
+        self.subactionQueue += [{'type': "path follower", 'goals': request.points}]
 
         self.currentAction = ActionType.NAVIGATE
         self.observationActionCompleteResult = ObservationActionComplete.SUCCESS
@@ -445,6 +483,27 @@ class Controller(object):
         self.currentAction = ActionType.ALIGN
         self.observationActionCompleteResult = ObservationActionComplete.SUCCESS
         return ActionAlignResponse(ActionType.NONE)
+
+    def srv_action_communicate(self, request):
+        """ Handle a service request for the communicate action.
+
+            Parameters:
+                request     --  The ActionCommunicateRequest object.
+
+            Returns:
+                The ActionCommunicateResponse object.
+        """
+
+        if self.currentAction is not ActionType.NONE:
+            return ActionCommunicateResponse(self.currentAction)
+
+        self.subactionQueue += [{'type': "communicate", 'led': request.led, 'sound': request.sound},
+                                {'type': "sleep", 'duration': request.duration},
+                                {'type': "communicate", 'led': Led.BLACK},]
+
+        self.currentAction = ActionType.COMMUNICATE
+        self.observationActionCompleteResult = ObservationActionComplete.SUCCESS
+        return ActionCommunicateResponse(ActionType.NONE)
 
     def sub_kobuki_bumper(self, msg):
         """ This method checks for sensing a bump, used for determining action success/failure.

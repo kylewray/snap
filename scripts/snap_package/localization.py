@@ -73,9 +73,6 @@ class Localization(object):
 
         self.pubLocalization = None
 
-        #self.subDepthPointCloud = None
-        #self.pubLaserScan = None
-
     def start(self):
         """ Start the necessary messages to create a map and localize. """
 
@@ -95,14 +92,6 @@ class Localization(object):
 
         pubLocalizationTopic = rospy.get_param("~pub_localization", "~localization")
         self.pubLocalization = rospy.Publisher(pubLocalizationTopic, LocalizationEstimate, queue_size=8)
-
-        #subDepthPointCloudTopic = rospy.get_param("~sub_depth_point_cloud", "depth_point_cloud")
-        #self.subDepthPointCloud = rospy.Subscriber(subDepthPointCloudTopic,
-        #                                           PointCloud2,
-        #                                           self.sub_depth_point_cloud)
-
-        #pubLaserScanTopic = rospy.get_param("~pub_laser_scan", "scan")
-        #self.pubLaserScan = rospy.Publisher(pubLaserScanTopic, LaserScan, queue_size=8)
 
         self.started = True
 
@@ -253,15 +242,12 @@ class Localization(object):
                 msg     --  The AlvarMarkers message data.
         """
 
-        return # TODO TODO TODO TODO TODO TODO TODO TODO
-
         if not self.started:
             rospy.logwarn("Warn[Localization.sub_ar_tags]: Initialization has not yet completed.")
             return
 
-        #if abs(self.get_speed_estimate()) >= 0.00:
-        #    rospy.loginfo("Info[Localization.sub_ar_tags]: Moving too fast to do localization.")
-        #    return
+        if abs(self.get_speed_estimate()) >= 0.1:
+            return
 
         newPositionEstimate = Point()
         newHeadingEstimate = 0.0
@@ -274,7 +260,9 @@ class Localization(object):
             if obj is None:
                 continue
 
-            #rospy.loginfo("Info[Localization.sub_ar_tags]: Detected Marker ID %i - Found a match in the map!" % (marker.id))
+            # Even if it is in the map, only use it for localization if it has the "static" type.
+            if obj['type'] != "static":
+                continue
 
             # Get maker (x, y, theta).
             markerX = marker.pose.pose.position.x
@@ -292,18 +280,13 @@ class Localization(object):
             distanceFromView = math.sqrt(pow(markerX, 2) + pow(markerY, 2))
             thetaFromView = abs(float(np.arctan2(markerY, markerX)))
 
-            # If these metrics show this observation gave a wild result or was too far from a good view, then throw it out.
+            # If the metrics show the observation is a wild result or was too far from a good view, then throw it out.
             if distanceFromCurrentEstimate >= self.thresholdDistanceFromCurrentEstimate:
-                print("Distance From Current Estimate of %.2f is greater than %.2f. Throw it away!" % (distanceFromCurrentEstimate, self.thresholdDistanceFromCurrentEstimate))
                 continue
             if distanceFromView >= self.thresholdDistanceFromView:
-                print("Distance From View of %.2f is greater than %.2f. Throw it away!" % (distanceFromView, self.thresholdDistanceFromView))
                 continue
             if thetaFromView >= self.thresholdThetaFromView:
-                print("Theta From View of %.2f is greater than %.2f. Throw it away!" % (thetaFromView, self.thresholdThetaFromView))
                 continue
-
-            print("Keep it! New (x, y, theta) estimate is (%.2f, %.2f, %.2f)!" % (x, y, heading))
 
             # Get the location and heading in the map and offset it properly by the observed pose.
             # Update the running average if you find more than one AR tag that can help localize.
@@ -313,16 +296,6 @@ class Localization(object):
 
             numARTags += 1.0
 
-            ## DEBUG  TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
-            #roll, pitch, yaw = euler_from_quaternion([marker.pose.pose.orientation.x,
-            #                                          marker.pose.pose.orientation.y,
-            #                                          marker.pose.pose.orientation.z,
-            #                                          marker.pose.pose.orientation.w])
-            #print("Distance = %.3f" % (distanceAwayFromView))
-            #print("Theta = %.3f" % (abs(thetaAwayFromView)))
-            #print("Roll = %.2f    Pitch = %.2f    Yaw = %.2f" % (roll, pitch, yaw))
-
-
         if numARTags > 0.0:
             self.positionEstimate.x = ((1.0 - self.localizationWeightOfObjects) * self.positionEstimate.x
                                         + self.localizationWeightOfObjects * newPositionEstimate.x)
@@ -330,32 +303,6 @@ class Localization(object):
                                         + self.localizationWeightOfObjects * newPositionEstimate.y)
             self.headingEstimate = ((1.0 - self.localizationWeightOfObjects) * self.headingEstimate
                                         + self.localizationWeightOfObjects * newHeadingEstimate)
-
-    def sub_depth_point_cloud(self, msg):
-        """ Update the raw depth point cloud information, including sub-sampling and extracting abstract data.
-
-            Parameters:
-                msg     --  The raw PointCloud2 message data.
-        """
-
-        if not self.started:
-            rospy.logwarn("Warn[Localization.sub_depth_point_cloud]: Initialization has not yet completed.")
-            return
-
-        # TODO: Take raw point cloud, find points at a height, populate a Laser whatever msg,
-        # publish on map topic... Run mapping node in separate window. In rviz listen to the
-        # map topic. See how it does at mapping... Update: It sucks.
-
-        #fakeLaserScan = LaserScan()
-        #fakeLaserScan.header = msg.header
-        #fakeLaserScan.angle_min = -0.994838
-        #fakeLaserScan.angle_max = 0.994838
-        #fakeLaserScan.angle_increment = (0.994838 * 2.0) / 
-        #fakeLaserScan.time_increment = 0.0
-        #fakeLaserScan.scan_time = 1.0 / 30.0
-        #fakeLaserScan.
-
-        #self.pubLaserScan.publish(fakeLaserScan)
 
     def publish_localization(self):
         """ Publish the current localization estimates for the robot. """

@@ -35,6 +35,7 @@ add_service_files(
   ActionNavigateToRegion.srv
   ActionPush.srv
   ActionAlign.srv
+  ActionCommunicate.srv
   GetRegions.srv
   GetRegion.srv
   GetRegionByPoint.srv
