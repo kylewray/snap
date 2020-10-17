@@ -261,13 +261,25 @@ class SnapMap(object):
         if region is None:
             return None
 
-        neighborUIDs = set()
-        for connection in self.connections:
-            if region['uid'] in connection['region_uids']:
-                neighborUIDs |= set(connection['region_uids']) - {region['uid']}
+        regionUIDs = [region['uid'] for region in self.regions]
+        def is_neighbor(ruid1, ruid2):
+            if ruid1 != ruid2 and any(ruid1 in con['region_uids'] and ruid2 in con['region_uids']
+                                      for con in self.connections):
+                return True
+            else:
+                return False
+        def neighbors(ruid):
+            return [region for region in self.regions if is_neighbor(region['uid'], ruid)]
 
-        regions = [self.get_region(uid) for uid in neighborUIDs]
-        return [r for r in regions if r is not None]
+        # Old way that was unordered. Replaced with new way that is ordered.
+        #neighborUIDs = set()
+        #for connection in self.connections:
+        #    if region['uid'] in connection['region_uids']:
+        #        neighborUIDs |= set(connection['region_uids']) - {region['uid']}
+        #regions = [self.get_region(uid) for uid in neighborUIDs]
+        #return [r for r in regions if r is not None]
+
+        return neighbors(regionUID)
 
     def get_connections(self):
         """ Get the list of connections as a dictionary of information.
