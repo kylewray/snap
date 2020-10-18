@@ -44,7 +44,9 @@ class PathFollower(object):
         self.path = None
         self.goalPositions = list()
         self.lastComputePathUpdateTime = None
-        self.computePathSecondsPerUpdate = 1.0 / float(rospy.get_param("~compute_path_update_rate", 1.0))
+        self.lastTimeGoalWasSet = None
+        self.initialDelayBeforeFollowingPath = float(rospy.get_param("~initial_delay_before_following_path", 5.0))
+        self.computePathSecondsPerUpdate = 1.0 / float(rospy.get_param("~compute_path_update_rate", 3.0))
 
         self.pathResolution = float(rospy.get_param("~path_resolution", 0.1))
         self.minPathListSize = int(rospy.get_param("~min_path_list_size", "1"))
@@ -109,6 +111,7 @@ class PathFollower(object):
         self.path = None
         self.goalPositions = list()
         self.lastComputePathUpdateTime = None
+        self.lastTimeGoalWasSet = None
 
     def _get_pose_stamped_goal_list(self):
         """ Return the list of PoseStamped goal objects.
@@ -157,6 +160,9 @@ class PathFollower(object):
         except rospy.ServiceException:
             rospy.logwarn("Warning[PathFollower.set_goals]: Failed to execute service call ModifyGoals in 'epic'.")
 
+        # Remember when we set a goal last.
+        self.lastTimeGoalWasSet = rospy.get_rostime().to_sec()
+
     def at_goal(self):
         """ Determine if we are at the goal or not.
 
@@ -182,7 +188,17 @@ class PathFollower(object):
                 True if a path exists, False otherwise.
         """
 
-        return self.path is not None
+        currentTime = rospy.get_rostime().to_sec()
+
+        # If the initial delay has not been satisfied, then there is no path yet.
+        # This is to ensure that the quality of the path is high.
+        if (self.lastTimeGoalWasSet is None
+                or self.lastTimeGoalWasSet + self.initialDelayBeforeFollowingPath > currentTime):
+            return False
+
+        # Otherwise, if we have a path then say we have one.
+        else:
+            return self.path is not None
 
     def _compute_path(self, positionEstimate):
         """ Compute the actual path given a proper localization.
@@ -197,7 +213,7 @@ class PathFollower(object):
         currentTime = rospy.get_rostime().to_sec()
 
         if (self.lastComputePathUpdateTime is None 
-                or (self.lastComputePathUpdateTime + self.computePathSecondsPerUpdate <= currentTime)):
+                or self.lastComputePathUpdateTime + self.computePathSecondsPerUpdate <= currentTime):
             self.lastComputePathUpdateTime = currentTime
 
             rospy.wait_for_service(self.srvEpicComputePathTopic)
