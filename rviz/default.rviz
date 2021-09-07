@@ -160,7 +160,7 @@ Visualization Manager:
       Marker Topic: /visualize/objects
       Name: MarkerArray
       Namespaces:
-        ~: true
+        {}
       Queue Size: 100
       Value: true
     - Class: rviz/MarkerArray
@@ -243,11 +243,11 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.00999999978
-      Scale: 102.824417
+      Scale: 61.6633263
       Target Frame: <Fixed Frame>
       Value: TopDownOrtho (rviz)
-      X: 1.33363128
-      Y: 1.87962353
+      X: -0.67498821
+      Y: 0.175401926
     Saved: ~
 Window Geometry:
   Displays:

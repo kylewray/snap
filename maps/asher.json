@@ -1,0 +1,127 @@
+{
+    "regions": [
+        {
+            "uid": 0,
+            "name": "Center of Apartment",
+            "bounds": [[-0.5, 1.0], [-0.5, -1.0], [0.5, -1.0], [0.5, 1.0]],
+            "color": [1.0, 0.0, 0.0],
+            "object_uids": []
+        },
+        {
+            "uid": 1,
+            "name": "Dining Room",
+            "bounds": [[-4.0, -0.75], [-4.0, -1.5], [-2.5, -1.5], [-2.5, -0.75]],
+            "color": [1.0, 0.0, 0.0],
+            "object_uids": []
+        },
+        {
+            "uid": 2,
+            "name": "Kitchen",
+            "bounds": [[-3.0, 1.25], [-3.0, 0.75], [-1.5, 0.75], [-1.5, 1.25]],
+            "color": [1.0, 0.0, 0.0],
+            "object_uids": []
+        },
+        {
+            "uid": 3,
+            "name": "Living Room",
+            "bounds": [[1.5, -0.25], [1.5, -1.0], [3.0, -1.0], [3.0, -0.25]],
+            "color": [1.0, 0.0, 0.0],
+            "object_uids": []
+        },
+        {
+            "uid": 4,
+            "name": "Bathroom (South)",
+            "bounds": [[-2.5, -3.0], [-2.5, -4.0], [-1.5, -4.0], [-1.5, -3.0]],
+            "color": [1.0, 0.0, 0.0],
+            "object_uids": []
+        },
+        {
+            "uid": 5,
+            "name": "Office",
+            "bounds": [[0.25, -2.5], [0.25, -4.5], [1.0, -4.5], [1.0, -2.5]],
+            "color": [1.0, 0.0, 0.0],
+            "object_uids": []
+        },
+        {
+            "uid": 6,
+            "name": "Bedroom",
+            "bounds": [[0.25, 4.0], [0.25, 3.25], [1.0, 3.25], [1.0, 4.0]],
+            "color": [1.0, 0.0, 0.0],
+            "object_uids": []
+        },
+        {
+            "uid": 7,
+            "name": "Bathroom (North)",
+            "bounds": [[-2.5, 4.0], [-2.5, 3.25], [-1.0, 3.25], [-1.0, 4.0]],
+            "color": [1.0, 0.0, 0.0],
+            "object_uids": []
+        }
+    ],
+    "connections": [
+        {
+            "uid": 0,
+            "name": "Center of Apartment to Dining Room",
+            "region_uids": [0, 1],
+            "weight": 1.0
+        },
+        {
+            "uid": 1,
+            "name": "Dining Room to Kitchen",
+            "region_uids": [1, 2],
+            "weight": 1.0
+        },
+        {
+            "uid": 2,
+            "name": "Center of Apartment to Kitchen",
+            "region_uids": [0, 2],
+            "weight": 1.0
+        },
+        {
+            "uid": 3,
+            "name": "Center of Apartment to Living Room",
+            "region_uids": [0, 3],
+            "weight": 1.0
+        },
+        {
+            "uid": 4,
+            "name": "Center of Apartment to Office",
+            "region_uids": [0, 5],
+            "weight": 1.0
+        },
+        {
+            "uid": 5,
+            "name": "Dining Room to Bathroom (South)",
+            "region_uids": [1, 4],
+            "weight": 1.0
+        },
+        {
+            "uid": 6,
+            "name": "Bathroom (South) to Office",
+            "region_uids": [4, 5],
+            "weight": 1.0
+        },
+        {
+            "uid": 7,
+            "name": "Center of Apartment to Bedroom",
+            "region_uids": [0, 6],
+            "weight": 1.0
+        },
+        {
+            "uid": 8,
+            "name": "Bedroom to Bathroom (North)",
+            "region_uids": [6, 7],
+            "weight": 1.0
+        }
+    ],
+    "objects": [
+        {
+            "name": "Target Object of Search",
+            "uid": 23,
+            "type": "dynamic",
+            "tag_uid": 23,
+            "position": [0.0, 0.0],
+            "heading": 0.0,
+            "color": [0.0, 0.0, 1.0]
+        }
+    ]
+}
